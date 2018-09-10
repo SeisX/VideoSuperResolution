@@ -56,15 +56,90 @@ def _colored_grayscale_image(outputs, input, **kwargs):
 def _to_normalized_image(img, mode):
     img = np.asarray(img)
     # squeeze to [H, W, C]
-    for i in range(np.ndim(img)):
-        try:
-            img = np.squeeze(img, i)
-        except ValueError:
-            pass
-    img = np.clip(img, 0, 255)
+    try:
+        img = np.squeeze(img)
+    except ValueError:
+        pass
     if img.ndim < 2 or img.ndim > 3:
         raise ValueError('Invalid img data, must be an array of 2D image1 with channel less than 3')
+    if img.shape[-1] == 2:
+        # treat 2 channels image as optical flow
+        return _flow_to_image(img, mode)
+    img = np.clip(img, 0, 255)
     return array_to_img(img, mode)
+
+
+def _color_wheel():
+    RY = 15
+    YG = 6
+    GC = 4
+    CB = 11
+    BM = 13
+    MR = 6
+    color = np.zeros([RY + YG + GC + CB + BM + MR, 3])
+    for i in range(RY):
+        color[i] = [255, 255 * i / RY, 0]
+    for i in range(YG):
+        color[i + RY] = [255 - 255 * i / YG, 255, 0]
+    for i in range(GC):
+        color[i + RY + YG] = [0, 255, 255 * i / GC]
+    for i in range(CB):
+        color[i + RY + YG + GC] = [0, 255 - 255 * i / CB, 255]
+    for i in range(BM):
+        color[i + RY + YG + GC + CB] = [255 * i / BM, 0, 255]
+    for i in range(MR):
+        color[i + RY + YG + GC + CB + BM] = [255, 0, 255 - 255 * i / MR]
+    return color / 255
+
+
+def _viz_flow(u, v, logscale=True, scaledown=6):
+    """
+    Copied from https://github.com/jswulff/pcaflow/blob/master/pcaflow/utils/viz_flow.py
+    thanks to @jswulff
+
+    topleft is zero, u is horiz, v is vertical
+    red is 3 o'clock, yellow is 6, light blue is 9, blue/purple is 12
+    """
+    colorwheel = _color_wheel()
+    ncols = colorwheel.shape[0]
+
+    radius = np.sqrt(u ** 2 + v ** 2)
+    if logscale:
+        radius = np.log(radius + 1)
+    radius = radius / scaledown
+    rot = np.arctan2(-v, -u) / np.pi
+
+    fk = (rot + 1) / 2 * (ncols - 1)  # -1~1 maped to 0~ncols
+    k0 = fk.astype(np.uint8)  # 0, 1, 2, ..., ncols
+
+    k1 = k0 + 1
+    k1[k1 == ncols] = 0
+
+    f = fk - k0
+
+    ncolors = colorwheel.shape[1]
+    img = np.zeros(u.shape + (ncolors,))
+    for i in range(ncolors):
+        tmp = colorwheel[:, i]
+        col0 = tmp[k0]
+        col1 = tmp[k1]
+        col = (1 - f) * col0 + f * col1
+
+        idx = radius <= 1
+        # increase saturation with radius
+        col[idx] = 1 - radius[idx] * (1 - col[idx])
+        # out of range
+        col[~idx] *= 0.75
+        img[:, :, i] = np.floor(255 * col).astype(np.uint8)
+
+    return img.astype(np.uint8)
+
+
+def _flow_to_image(flow, mode):
+    u = flow[..., 0]
+    v = flow[..., 1]
+    viz = _viz_flow(u, v)
+    return array_to_img(viz, 'RGB')
 
 
 def _add_noise(feature, stddev, mean, clip, **kwargs):
@@ -119,6 +194,13 @@ def _eval_psnr(outputs, label, max_val, name, **kwargs):
         print(f'{name}\'s PSNR = {psnr:.2f}dB')
 
 
+def _image_align(image, scale, **kwargs):
+    H, W = image.shape[-3:-1]
+    h = H // scale * scale
+    w = W // scale * scale
+    return image[..., :h, :w, :]
+
+
 def save_image(save_dir='.', output_index=-1, **kwargs):
     return partial(_save_model_predicted_images, save_dir=save_dir, index=output_index, **kwargs)
 
@@ -170,3 +252,7 @@ def lr_decay(method, lr, **kwargs):
 
 def blur(kernel_width, kernel_size, method='gaussian'):
     return partial(_gaussian_blur, width=kernel_width, size=kernel_size)
+
+
+def image_alignment(scale):
+    return partial(_image_align, scale=scale)

@@ -10,11 +10,13 @@ Image processing tools
 
 import numpy as np
 from PIL import Image
+from pathlib import Path
 from .Utility import to_list
 
 
 def array_to_img(x, mode='YCbCr'):
     """Convert an ndarray to PIL Image."""
+    x = np.squeeze(x)
     return Image.fromarray(x.astype('uint8'), mode=mode)
 
 
@@ -23,6 +25,8 @@ def img_to_array(img, data_format=None):
 
       Copy from Keras
     """
+    if not isinstance(img, Image.Image):
+        return img
     if data_format is None:
         data_format = 'channels_last'
     if data_format not in {'channels_first', 'channels_last'}:
@@ -127,11 +131,59 @@ def shrink_to_multiple_scale(image, scale):
     return image.crop([0, 0, *size])
 
 
+def crop(image, box):
+    """crop `image` according to `box` boundary
+
+    NOTE: this acts the same as PIL.Image.crop
+
+    Args:
+        image: an ndarray, of shape [H, W, C] or [B, H, W, C]
+        box: a list of int, representing cropping boundary (left, upper, right, lower)
+    """
+
+    if isinstance(image, np.ndarray):
+        x0, y0, x1, y1 = map(int, map(round, box))
+
+        if x1 < x0:
+            x1 = x0
+        if y1 < y0:
+            y1 = y0
+
+        return image[..., y0:y1, x0:x1, :]
+    if isinstance(image, Image.Image):
+        return image.crop(box)
+
+
 def imread(url, mode='RGB'):
     """Read image from file to ndarray"""
 
     img = Image.open(url)
     return img_to_array(img.convert(mode))
+
+
+def imwrite(url, data, mode='RGB', name=None):
+    """Write `data` as image to `url`"""
+
+    url = Path(url)
+    if not url.exists():
+        url.mkdir(parents=True, exist_ok=True)
+    if np.ndim(data) == 3:
+        data = np.expand_dims(data, 0)
+    imgs = np.split(data, data.shape[0])
+    if name is None:
+        name = [f'image_{i:03d}' for i in range(data.shape[0])]
+    urls = to_list(url, data.shape[0])
+    for img, url, n in zip(imgs, urls, name):
+        if url.is_dir():
+            url_f = url / n
+        else:
+            url_f = url
+        img = array_to_img(img[0], mode).convert('RGB')
+        url_f = url_f.with_suffix('.png')
+        if url_f.exists():
+            url_f = url_f.parent / (url_f.stem + str(np.random.randint(100000)))
+            url_f = url_f.with_suffix('.png')
+        img.save(url_f)
 
 
 def random_crop_batch_image(image, batch, shape, seed=None):

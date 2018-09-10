@@ -12,5 +12,5 @@ __all__ = [
     'Dbpn',
     'Edsr',
     'SrGan',
-    'Exp',
+    'FlowNetS',
 ]

@@ -1,11 +1,15 @@
 from setuptools import find_packages
 from setuptools import setup
 
-VERSION = '0.2.14'
+VERSION = '0.3.2'
 
 REQUIRED_PACKAGES = [
     'numpy',
     'Image',
+    'pypng',
+    'pytest',
+    'psutil',
+    'tqdm'
 ]
 
 if __name__ == '__main__':

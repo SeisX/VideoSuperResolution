@@ -31,6 +31,37 @@ def to_list(x, repeat=1):
         return []
 
 
+def str_to_bytes(s):
+    """convert string to byte unit. Case insensitive.
+
+    >>> str_to_bytes('2GB')
+      2147483648
+    >>> str_to_bytes('1kb')
+      1024
+    """
+    s = s.replace(' ', '')
+    if s[-1].isalpha() and s[-2].isalpha():
+        _unit = s[-2:].upper()
+        _num = s[:-2]
+    elif s[-1].isalpha():
+        _unit = s[-1].upper()
+        _num = s[:-1]
+    else:
+        return float(s)
+    if not _unit in ('B', 'KB', 'MB', 'GB', 'TB', 'PB', 'EB', 'ZB', 'YB'):
+        raise ValueError('invalid unit', _unit)
+    carry = {'B': 1,
+             'KB': 1024,
+             'MB': 1024 ** 2,
+             'GB': 1024 ** 3,
+             'TB': 1024 ** 4,
+             'PB': 1024 ** 5,
+             'EB': 1024 ** 6,
+             'ZB': 1024 ** 7,
+             'YB': 1024 ** 8}
+    return float(_num) * carry[_unit]
+
+
 def shrink_mod_scale(x, scale):
     """clip each dim of x to multiple of scale"""
     return [_x - _x % _s for _x, _s in zip(x, to_list(scale, 2))]
@@ -93,15 +124,20 @@ def crop_to_batch(image, scale):
 
 
 def bicubic_rescale(img, scale):
-    """Resize image in tensorflow"""
-    with tf.name_scope('Bicubic'):
+    """Resize image in tensorflow.
+
+    NOTE: tf.image.resize_bicubic behaves quite differently to PIL.Image.resize,
+      try to use resize_area without aligned corners.
+    """
+    with tf.name_scope('Upsample'):
         shape = tf.shape(img)
         scale = to_list(scale, 2)
-        shape_enlarge = tf.cast(shape, tf.float32) * [1, *scale, 1]
-        shape_enlarge = tf.cast(shape_enlarge, tf.int32)
-        tf.logging.warning("tf.image.resize_bicubic behaves quite differently to PIL.Image.resize,\
-                even if align_corners is enabled or not")
-        return tf.image.resize_bicubic(img, shape_enlarge[1:3], align_corners=True)
+        shape_enlarge = tf.to_float(shape) * [1, *scale, 1]
+        shape_enlarge = tf.to_int32(shape_enlarge)
+        # tf.logging.warning(
+        #     "tf.image.resize_bicubic behaves quite differently to PIL.Image.resize, " +
+        #     "even if align_corners is enabled or not")
+        return tf.image.resize_area(img, shape_enlarge[1:3], align_corners=False)
 
 
 def prelu(x, name=None, scope='PRELU'):
@@ -111,8 +147,8 @@ def prelu(x, name=None, scope='PRELU'):
         return tf.nn.relu(x) + tf.multiply(alphas, (x - tf.abs(x))) * 0.5
 
 
-def guassian_kernel(kernel_size, width):
-    """generate a guassian kernel"""
+def gaussian_kernel(kernel_size, width):
+    """generate a gaussian kernel"""
 
     kernel_size = np.asarray(to_list(kernel_size, 2), np.int32)
     kernel_size = kernel_size - kernel_size % 2
@@ -149,6 +185,8 @@ def pixel_norm(images, epsilon=1.0e-8, scale=1.0, bias=0):
     Args:
       images: A 4D `Tensor` of NHWC format.
       epsilon: A small positive number to avoid division by zero.
+      scale: scale the normalized value
+      bias: add bias to output
 
     Returns:
       A 4D `Tensor` with pixel-wise normalized channels.

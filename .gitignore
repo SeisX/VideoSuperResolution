@@ -1,9 +1,12 @@
 seafile-ignore.txt
 .idea/
 .vscode/
+.pytest_cache/
 __pycache__/
+
 *.egg-info/
 Results/
+Fixed/
 Exp/
 UTest/**/
 .png
