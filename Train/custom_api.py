@@ -1,14 +1,16 @@
 """
-Copyright: Intel Corp. 2018
+Copyright: Wenyi Tang 2017-2018
 Author: Wenyi Tang
 Email: wenyi.tang@intel.com
 Created Date: July 31st 2018
 
 custom feature callback.
 Usage:
-    pass the function name to `train.py` args `--custom_feature_cb`.
-    During training and testing, the `Environment` will call the given
-    function to process input data
+    pass the function name to `run.py` args `--add_custom_callbacks func1 --add_custom_callbacks func2`.
+    During training and testing, the `Trainer` will call the given functions to process input data
+
+Note:
+    functions must keep `kwargs` to ignore un-parsed arguments
 """
 
 from PIL import Image
@@ -69,3 +71,40 @@ def chessboard(inputs, **kwargs):
 def noisy(inputs, **kwargs):
     shape = inputs.shape
     return np.random.normal(0, 1, shape)
+
+
+def shave(inputs, **kwargs):
+    h, w = inputs.shape[-3:-1]
+    h_mod = h - h % 64
+    w_mod = w - w % 64
+    return inputs[..., :h_mod, :w_mod, :]
+
+
+def pad(inputs, **kwargs):
+    h, w = inputs.shape[-3:-1]
+    ph = 64 - h % 64
+    pw = 64 - w % 64
+    if ph == 64: ph = 0
+    if pw == 64: pw = 0
+    ph = [ph // 2, ph - ph // 2]
+    pw = [pw // 2, pw - pw // 2]
+    inputs = np.pad(inputs, [[0, 0], [0, 0], ph, pw, [0, 0]], 'edge')
+    return inputs
+
+def upsample(inputs, scale=4, **kwargs):
+    res = []
+    for img in inputs:
+        h, w, c = img.shape
+        if c == 3:
+            img = Image.fromarray(img, 'RGB')
+        elif c == 1:
+            img = Image.fromarray(img[..., 0], 'L')
+        else:
+            raise ValueError
+        img = img.resize([w * scale, h * scale], resample=Image.BICUBIC)
+        res.append(np.array(img))
+    res = np.stack(res)
+    if np.ndim(res) < 4:
+        res = np.expand_dims(res, axis=-1)
+    return res
+

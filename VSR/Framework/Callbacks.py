@@ -1,5 +1,5 @@
 """
-Copyright: Intel Corp. 2018
+Copyright: Wenyi Tang 2017-2018
 Author: Wenyi Tang
 Email: wenyi.tang@intel.com
 Created Date: May 17th 2018
@@ -25,22 +25,31 @@ def _sub_residual(**kwargs):
 
 def _save_model_predicted_images(output, index, mode='YCbCr', **kwargs):
     save_dir = kwargs.get('save_dir') or '.'
-    name = kwargs.get('name')
+    sub_dir = kwargs.get('subdir') or '.'
+    name, seq, frames = kwargs.get('name')
+    seq = int(seq)
+    frames = int(frames)
     if output is not None:
-        img = output[index] if isinstance(output, list) else output
-        img = _to_normalized_image(img, mode)
-        path = Path(f'{save_dir}/{name}_PR.png')
+        imgs = output[index] if isinstance(output, list) else output
+        imgs = _to_normalized_image(imgs, mode)
+        path = Path(save_dir) / sub_dir
+        if frames > 1:
+            path /= f'{name}/{seq:04d}_PR.png'
+        else:
+            path /= f'{name}_PR.png'
         path.parent.mkdir(parents=True, exist_ok=True)
         rep = 1
-        while path.exists():
-            path = Path(f'{save_dir}/{name}_PR_{rep}.png')
-            rep += 1
-        img.convert('RGB').save(str(path))
+        path2 = path
+        for img in imgs:
+            while path2.exists():
+                path2 = path.parent / f'{path.stem}_{rep}.png'
+                rep += 1
+            img.convert('RGB').save(str(path2))
     return output
 
 
 def _colored_grayscale_image(outputs, input, **kwargs):
-    ret = []
+    return_img = []
     for img in outputs:
         assert img.shape[-1] == 1
         scale = np.array(img.shape[1:3]) // np.array(input.shape[1:3])
@@ -48,25 +57,21 @@ def _colored_grayscale_image(outputs, input, **kwargs):
         uv = imresize(uv, scale)
         uv = img_to_array(uv)[..., 1:]
         img = np.concatenate([img[0], uv], axis=-1)
-        img = np.clip(img, 0, 255)
-        ret.append(array_to_img(img, 'YCbCr'))
-    return ret
+        return_img.append(img)
+    return np.stack(return_img)
 
 
 def _to_normalized_image(img, mode):
     img = np.asarray(img)
-    # squeeze to [H, W, C]
-    try:
-        img = np.squeeze(img)
-    except ValueError:
-        pass
-    if img.ndim < 2 or img.ndim > 3:
-        raise ValueError('Invalid img data, must be an array of 2D image1 with channel less than 3')
-    if img.shape[-1] == 2:
-        # treat 2 channels image as optical flow
-        return _flow_to_image(img, mode)
-    img = np.clip(img, 0, 255)
-    return array_to_img(img, mode)
+    assert img.ndim == 4
+    return_img = []
+    for single_img in img:
+        if single_img.shape[-1] == 2:
+            # treat 2 channels image as optical flow
+            return_img.append(_flow_to_image(img, mode))
+        single_img = np.clip(single_img, 0, 255)
+        return_img.append(array_to_img(single_img, mode))
+    return return_img
 
 
 def _color_wheel():
@@ -162,21 +167,32 @@ def _gaussian_blur(feature, width, size, **kwargs):
         c = []
         for channel in np.split(img, img.shape[-1]):
             channel = np.squeeze(channel).astype('float')
-            c.append(gf(channel, width, mode='constant', truncate=(size // 2) / width))
+            c.append(gf(channel, width, mode='constant',
+                        truncate=(size // 2) / width))
         y.append(np.stack(c, axis=-1))
     return np.stack(y)
 
 
-def _exponential_decay(lr, start_lr, epochs, steps, decay_step, decay_rate):
+def _exponential_decay(start_lr, steps, decay_step, decay_rate, **kwargs):
     return start_lr * decay_rate ** (steps / decay_step)
 
 
-def _poly_decay(lr, start_lr, end_lr, epochs, steps, decay_step, power):
+def _poly_decay(start_lr, end_lr, steps, decay_step, power, **kwargs):
     return (start_lr - end_lr) * (1 - steps / decay_step) ** power + end_lr
 
 
-def _stair_decay(lr, start_lr, epochs, steps, decay_step, decay_rate):
+def _stair_decay(start_lr, steps, decay_step, decay_rate, **kwargs):
     return start_lr * decay_rate ** (steps // decay_step)
+
+
+def _multistep_decay(start_lr, steps, decay_step, decay_rate, **kwargs):
+    if not decay_step:
+        return start_lr
+    for n, s in enumerate(decay_step):
+        if steps <= s:
+            return start_lr * (decay_rate ** n)
+    if steps > decay_step[-1]:
+        return start_lr * (decay_rate ** len(decay_step))
 
 
 def _eval_psnr(outputs, label, max_val, name, **kwargs):
@@ -202,7 +218,8 @@ def _image_align(image, scale, **kwargs):
 
 
 def save_image(save_dir='.', output_index=-1, **kwargs):
-    return partial(_save_model_predicted_images, save_dir=save_dir, index=output_index, **kwargs)
+    return partial(_save_model_predicted_images, save_dir=save_dir,
+                   index=output_index, **kwargs)
 
 
 def print_psnr(max_val=255.0):
@@ -236,7 +253,8 @@ def add_noise(sigma, mean=0, clip=False):
 
 
 def add_random_noise(low, high, step=1, mean=0, clip=False):
-    return partial(_add_random_noise, low=low, high=high, step=step, mean=mean, clip=clip)
+    return partial(_add_random_noise, low=low, high=high, step=step, mean=mean,
+                   clip=clip)
 
 
 def lr_decay(method, lr, **kwargs):
@@ -246,8 +264,11 @@ def lr_decay(method, lr, **kwargs):
         return partial(_poly_decay, start_lr=lr, **kwargs)
     elif method == 'stair':
         return partial(_stair_decay, start_lr=lr, **kwargs)
+    elif method == 'multistep':
+        return partial(_multistep_decay, start_lr=lr, **kwargs)
     else:
-        raise ValueError('invalid decay method!')
+        print('invalid decay method!')
+        return None
 
 
 def blur(kernel_width, kernel_size, method='gaussian'):

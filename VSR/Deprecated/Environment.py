@@ -1,5 +1,5 @@
 """
-Copyright: Intel Corp. 2018
+Copyright: Wenyi Tang 2017-2018
 Author: Wenyi Tang
 Email: wenyi.tang@intel.com
 Created Date: May 11th 2018
@@ -13,10 +13,10 @@ import time
 import tqdm
 from pathlib import Path
 
-from .SuperResolution import SuperResolution
-from ..DataLoader.Loader import MpLoader, QuickLoader
-from ..DataLoader.Dataset import Dataset
-from ..Util.Utility import to_list
+from VSR.Framework.SuperResolution import SuperResolution
+from VSR.DataLoader.Loader import MpLoader, QuickLoader
+from VSR.DataLoader.Dataset import Dataset
+from VSR.Util.Utility import to_list
 
 
 class Environment:
@@ -137,6 +137,7 @@ class Environment:
             restart=False,
             validate_numbers=1,
             validate_every_n_epoch=1,
+            augmentation=False,
             parallel=1,
             memory_usage=None,
             **kwargs):
@@ -153,8 +154,9 @@ class Environment:
             restart: if True, start training from scratch, regardless of saved checkpoints
             validate_numbers: the number of patches in validation
             validate_every_n_epoch: run validation every n epochs
-            parallel:
-            memory_usage:
+            augmentation: a boolean representing conduct image augmentation (random flip and rotate)
+            parallel: a scalar representing threads number of loading dataset
+            memory_usage: a string or integer, limiting maximum usage of CPU memory. (i.e. 1024MB, 8GB...)
         """
 
         sess = tf.get_default_session()
@@ -170,17 +172,19 @@ class Environment:
         print('===================================')
         print(f'Training model: {self.model.name.upper()}')
         print('===================================')
-        self.model.summary()
+        self.model.display()
         summary_writer = tf.summary.FileWriter(str(self.logdir), graph=tf.get_default_graph())
         lr = learning_rate
         global_step = self.model.global_steps.eval()
         if learning_rate_schedule and callable(learning_rate_schedule):
             lr = learning_rate_schedule(lr, epochs=init_epoch, steps=global_step)
         if parallel == 1:
-            train_loader = QuickLoader(batch, dataset, 'train', self.model.scale, steps_per_epoch, **kwargs)
+            train_loader = QuickLoader(batch, dataset, 'train', self.model.scale, steps_per_epoch,
+                                       crop='random', augmentation=augmentation, **kwargs)
         else:
-            train_loader = MpLoader(batch, dataset, 'train', self.model.scale, steps_per_epoch, **kwargs)
-        val_loader = QuickLoader(batch, dataset, 'val', self.model.scale, validate_numbers, **kwargs)
+            train_loader = MpLoader(batch, dataset, 'train', self.model.scale, steps_per_epoch,
+                                    crop='random', augmentation=augmentation, **kwargs)
+        val_loader = QuickLoader(batch, dataset, 'val', self.model.scale, validate_numbers, crop='center', **kwargs)
         for epoch in range(init_epoch, epochs + 1):
             train_iter = train_loader.make_one_shot_iterator(memory_usage, shard=parallel, shuffle=True)
             date = time.strftime('%Y-%m-%d %T', time.localtime())
@@ -188,31 +192,34 @@ class Environment:
             avg_meas = {}
             with tqdm.tqdm(train_iter, unit='batch', ascii=True) as r:
                 for img in r:
-                    feature, label, name = img[self.fi], img[self.li], str(img[-1])
+                    feature, label, name = img[self.fi], img[self.li], img[-1]
                     for fn in self.feature_callbacks:
                         feature = fn(feature, name=name)
                     for fn in self.label_callbacks:
                         label = fn(label, name=name)
-                    loss = self.model.train_batch(feature=feature, label=label, learning_rate=lr, epochs=epoch)
+                    loss = self.model.train_batch(
+                        feature=feature, label=label, learning_rate=lr, epochs=epoch)
                     global_step = self.model.global_steps.eval()
                     if learning_rate_schedule and callable(learning_rate_schedule):
                         lr = learning_rate_schedule(lr, epochs=epoch, steps=global_step)
                     for k, v in loss.items():
                         avg_meas[k] = avg_meas[k] + [v] if avg_meas.get(k) else [v]
+                        loss[k] = '{:08.5f}'.format(v)
                     r.set_postfix(loss)
             for k, v in avg_meas.items():
                 print(f'| Epoch average {k} = {np.mean(v):.6f} |')
 
             if epoch % validate_every_n_epoch: continue
             val_metrics = {}
-            val_iter = val_loader.make_one_shot_iterator(shuffle=False)
+            val_iter = val_loader.make_one_shot_iterator(memory_usage, shard=parallel, shuffle=False)
             for img in val_iter:
-                feature, label, name = img[self.fi], img[self.li], str(img[-1])
+                feature, label, name = img[self.fi], img[self.li], img[-1]
                 for fn in self.feature_callbacks:
                     feature = fn(feature, name=name)
                 for fn in self.label_callbacks:
                     label = fn(label, name=name)
-                metrics, val_summary_op = self.model.validate_batch(feature=feature, label=label, epochs=epoch)
+                metrics, val_summary_op, _ = self.model.validate_batch(
+                    feature=feature, label=label, epochs=epoch)
                 for k, v in metrics.items():
                     if k not in val_metrics:
                         val_metrics[k] = []
@@ -233,9 +240,8 @@ class Environment:
         """
 
         sess = tf.get_default_session()
-        sess.run(tf.global_variables_initializer())
         ckpt_last = self._restore_model(sess)
-        loader = QuickLoader(1, dataset, 'test', self.model.scale, -1, no_patch=True, **kwargs)
+        loader = QuickLoader(1, dataset, 'test', self.model.scale, -1, crop=None, **kwargs)
         it = loader.make_one_shot_iterator()
         if len(it):
             print('===================================')
@@ -244,15 +250,16 @@ class Environment:
         else:
             return
         for img in tqdm.tqdm(it, 'Test', ascii=True):
-            feature, label, name = img[self.fi], img[self.li], str(img[-1])
-            tf.logging.debug('output: ' + name)
+            feature, label, name = img[self.fi], img[self.li], img[-1]
+            tf.logging.debug('output: ' + str(name))
             for fn in self.feature_callbacks:
                 feature = fn(feature, name=name)
             for fn in self.label_callbacks:
                 label = fn(label, name=name)
             outputs = self.model.test_batch(feature, None)
             for fn in self.output_callbacks:
-                outputs = fn(outputs, input=img[self.fi], label=img[self.li], name=name, mode=loader.color_format)
+                outputs = fn(outputs, input=img[self.fi], label=img[self.li], mode=loader.color_format,
+                             name=name, subdir=dataset.name)
 
     def predict(self, files, mode='pil-image1', depth=1, **kwargs):
         r"""Predict output for frames
@@ -264,11 +271,10 @@ class Environment:
         """
 
         sess = tf.get_default_session()
-        sess.run(tf.global_variables_initializer())
         ckpt_last = self._restore_model(sess)
         files = [Path(file) for file in to_list(files)]
         data = Dataset(test=files, mode=mode, depth=depth, modcrop=False, **kwargs)
-        loader = QuickLoader(1, data, 'test', self.model.scale, -1, no_patch=True, **kwargs)
+        loader = QuickLoader(1, data, 'test', self.model.scale, -1, crop=None, **kwargs)
         it = loader.make_one_shot_iterator()
         if len(it):
             print('===================================')
@@ -277,13 +283,13 @@ class Environment:
         else:
             return
         for img in tqdm.tqdm(it, 'Infer', ascii=True):
-            feature, label, name = img[self.fi], img[self.li], str(img[-1])
-            tf.logging.debug('output: ' + name)
+            feature, label, name = img[self.fi], img[self.li], img[-1]
+            tf.logging.debug('output: ' + str(name))
             for fn in self.feature_callbacks:
                 feature = fn(feature, name=name)
             outputs = self.model.test_batch(feature, None)
             for fn in self.output_callbacks:
-                outputs = fn(outputs, input=img[self.fi], label=img[self.li], name=name, mode=loader.color_format)
+                outputs = fn(outputs, input=img[self.fi], label=img[self.li], mode=loader.color_format, name=name)
 
     def export(self, export_dir='.'):
         """Export model as protobuf
@@ -293,6 +299,5 @@ class Environment:
         """
 
         sess = tf.get_default_session()
-        sess.run(tf.global_variables_initializer())
         self._restore_model(sess)
-        self.model.export_model_pb(export_dir)
+        self.model.export_saved_model(export_dir)

@@ -6,9 +6,12 @@ __pycache__/
 
 *.egg-info/
 Results/
-Fixed/
 Exp/
-UTest/**/
+Exp
+Fixed/
+Train/run.sh
+Train/run.bat
+
 .png
 .jpg
 .yuv

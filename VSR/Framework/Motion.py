@@ -1,5 +1,5 @@
 """
-Copyright: Intel Corp. 2018
+Copyright: Wenyi Tang 2017-2018
 Author: Wenyi Tang
 Email: wenyi.tang@intel.com
 Created Date: Aug 21st 2018
@@ -30,7 +30,8 @@ def _grid_norm(width, height, bounds=(-1.0, 1.0)):
           >>>  grid = np.vstack([x_t.flatten(), y_t.flatten(), ones])
     """
     x_t = tf.matmul(tf.ones(shape=tf.stack([height, 1])),
-                    tf.transpose(tf.expand_dims(tf.linspace(*bounds, width), 1), [1, 0]))
+                    tf.transpose(tf.expand_dims(
+                        tf.linspace(*bounds, width), 1), [1, 0]))
     y_t = tf.matmul(tf.expand_dims(tf.linspace(*bounds, height), 1),
                     tf.ones(shape=tf.stack([1, width])))
 
@@ -162,7 +163,24 @@ def _move(image, x, y):
     return tf.add_n([p00, p01, p10, p11])
 
 
-def warp(image, u, v, additive_warp=False, normalized=False):
+def warp(image, u, v, additive_warp=True, normalized=False):
+    """warp the image with flow(u, v)
+
+    If flow=[u, v], representing motion from img1 to img2
+    then `warp(img2, u, v)->img1~`
+
+    Args:
+         image: a 4-D tensor [B, H, W, C], images to warp
+         u: horizontal motion vectors of optical flow
+         v: vertical motion vectors of optical flow
+         additive_warp: a boolean, if False, regard [u, v]
+           as destination coordinate rather than motion
+           vectors.
+         normalized: a boolean, if True, regard [u, v] as
+         [-1, 1] and scaled to [-W, W], [-H, H] respectively.
+
+    Note: usually nobody uses a normalized optical flow...
+    """
     shape = tf.shape(image)
     B, H, W = shape[0], shape[1], shape[2]
 
@@ -179,6 +197,33 @@ def warp(image, u, v, additive_warp=False, normalized=False):
         v += G[..., 0]
 
     return _sample(image, u, v)
+
+
+def epe(label, predict):
+    """End-point error of optical flow"""
+    ux, vx = predict[..., 0], predict[..., 1]
+    uy, vy = label[..., 0], label[..., 1]
+    diff = tf.squared_difference(ux, uy) + tf.squared_difference(vx, vy)
+    return tf.sqrt(diff, name='EPE')
+
+
+def viz_flow(flow):
+    """Visualize optical flow in TF"""
+    from .Callbacks import _color_wheel
+    with tf.name_scope('VizFlow'):
+        colorwheel = _color_wheel().astype('float32')
+        ncols = colorwheel.shape[0]
+        u, v = flow[..., 0], flow[..., 1]
+        rot = tf.atan2(-v, -u) / np.pi
+        fk = (rot + 1) / 2 * (ncols - 1)  # -1~1 maped to 0~ncols
+        k0 = tf.to_int32(fk)  # 0, 1, 2, ..., ncols
+        k1 = tf.mod(k0 + 1, ncols)
+        f = fk - tf.to_float(k0)
+        f = tf.expand_dims(f, -1)
+        col0 = tf.gather_nd(colorwheel, tf.expand_dims(k0, -1))
+        col1 = tf.gather_nd(colorwheel, tf.expand_dims(k1, -1))
+        col = (1 - f) * col0 + f * col1
+    return col
 
 
 def open_flo(fn):
@@ -201,6 +246,32 @@ def open_flo(fn):
             # Reshape data into 3D array (columns, rows, bands)
             # The reshape here is for visualization, the original code is (w,h,2)
             return np.resize(data, (int(h), int(w), 2))
+
+
+def write_flo(filename, uv, v=None):
+    """ Write optical flow to file.
+    
+    Original code by Deqing Sun, adapted from Daniel Scharstein.
+    """
+    nBands = 2
+    TAG_CHAR = np.array([202021.25], np.float32)
+
+    if v is None:
+        u = uv[..., 0]
+        v = uv[..., 1]
+    else:
+        u = uv
+    height, width = u.shape
+    with open(filename, 'wb') as f:
+        # write the header
+        f.write(TAG_CHAR)
+        np.array(width).astype(np.int32).tofile(f)
+        np.array(height).astype(np.int32).tofile(f)
+        # arrange into matrix form
+        tmp = np.zeros((height, width * nBands))
+        tmp[:, np.arange(width) * 2] = u
+        tmp[:, np.arange(width) * 2 + 1] = v
+        tmp.astype(np.float32).tofile(f)
 
 
 def open_png16(fn):

@@ -1,5 +1,5 @@
 """
-Copyright: Intel Corp. 2018
+Copyright: Wenyi Tang 2017-2018
 Author: Wenyi Tang
 Email: wenyi.tang@intel.com
 Created Date: May 25th 2018
@@ -11,7 +11,7 @@ found in `run.*` scripts
 import argparse, json
 
 from VSR.DataLoader.Dataset import load_datasets
-from VSR.Framework.Envrionment import Environment
+from VSR.Framework.Environment import Environment
 from VSR.Framework.Callbacks import *
 
 try:
@@ -19,7 +19,7 @@ try:
 except ImportError:
     from model_alias import get_model, list_supported_models
 try:
-    from .custom_api import *
+    from Train.custom_api import *
 except ImportError:
     from custom_api import *
 
@@ -62,7 +62,7 @@ def main(*args, **kwargs):
     if Path(f'parameters/{args.name}.json').exists():
         model_args = json.load(open(f'parameters/{args.name}.json', mode='r'))
     else:
-        print(f'[warning] no model parameter file found, use default parameters')
+        print(f'[warning] model parameter file not found, use default parameters')
         model_args = dict()
     model = get_model(args.name)(scale=args.scale, channel=args.channel, **model_args)
 
@@ -129,9 +129,7 @@ def main(*args, **kwargs):
             env.output_callbacks[-1] = save_image(f'{save_root}/output', args.output_index)
             env.predict(test_set.pred, convert_to=test_format, depth=args.depth)
             env.fi = fi_old
-    if args.export_pb:
-        model = get_model(args.name)(scale=args.scale, rgb_input=True)
-        with Environment(model, f'{save_root}/save', f'{save_root}/log', feature_index=model.feature_index, label_index=model.label_index) as env:
+        if args.export_pb:
             env.export(args.export_pb)
 
 

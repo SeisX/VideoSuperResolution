@@ -1,5 +1,5 @@
 """
-Copyright: Intel.Corp 2017-2018
+Copyright: Wenyi Tang 2017-2018
 Author: Wenyi Tang
 Email: wenyi.tang@intel.com
 Created Date: Jan. 11th 2018
@@ -8,12 +8,13 @@ Updated Date: May 24th 2018
 offline dataset collector
 support random crop
 """
-import json
 from pathlib import Path
 from ..Util.Utility import to_list
+from ..Util.Config import Config
+import yaml
 
 
-class Dataset:
+class Dataset(Config):
     """Dataset provides training/validation/testing data for neural network.
 
     This is a simple wrapper provides train, val, test and additional properties
@@ -22,36 +23,28 @@ class Dataset:
         train: a list of file path, representing train set.
         val: a list of file path, representing validation set.
         test: a list of file path, representing test set.
-        mode: a string representing data format. 'pil-image' for formatted image,
-          or ('YV12', 'NV12', 'RGB', 'BGR'...) for raw data. See `VirtualFile._ALLOWED_RAW_FORMAT`
-        depth: an int scalar to specify consecutive image numbers
-        modcrop: A boolean to specify whether to crop the edge of images to be divisible
-          by `scale`. It's useful when to provide batches with original shapes.
-        patch_size: an int scalar or list of 2 ints, representing cropped patch size from the image
+        infer: a list of file path, representing infer set.
+        mode: a string representing data format. 'pil-image' for formatted
+          image, or ('YV12', 'NV12', 'RGB', 'BGR'...) for raw data.
+          See `VirtualFile._ALLOWED_RAW_FORMAT`
         flow: a list of file path representing optical flow files
     """
 
     def __init__(self, **kwargs):
-        self._args = kwargs
+        super(Dataset, self).__init__(kwargs)
         # default attr
-        self._args['mode'] = 'pil-image1' if not 'mode' in kwargs else kwargs['mode']
-        self._args['depth'] = 1 if not 'depth' in kwargs else kwargs['depth']
-        self._args['modcrop'] = True if not 'modcrop' in kwargs else kwargs['modcrop']
+        if self.mode is None:
+            self.mode = 'pil-image1'
 
     def __getattr__(self, item):
-        if item in self._args:
-            return self._args[item]
-        else:
-            if item in ('train', 'val', 'test'):
-                raise ValueError(f'un{item}able')
+        try:
+            return self[item]
+        except KeyError:
+            if item in ('train', 'val', 'test', 'infer',):
+                import tensorflow as tf
+                tf.logging.debug(f'The {item} files is empty!')
+                return []
             return None
-
-    def __setitem__(self, key, value):
-        self._args[key] = value
-
-    def setattr(self, **kwargs):
-        for key in kwargs:
-            self._args[key] = kwargs[key]
 
 
 def _glob_absolute_pattern(url):
@@ -85,32 +78,33 @@ def _glob_absolute_pattern(url):
     return ret
 
 
-def load_datasets(json_file):
-    """load dataset described in JSON file"""
+def load_datasets(describe_file):
+    """load dataset described in YAML file"""
 
     datasets = {}
-    with open(json_file, 'r') as fd:
-        config = json.load(fd)
+    with open(describe_file, 'r') as fd:
+        config = yaml.load(fd)
+        root = Path(config["Root"])
         all_set_path = config["Path"]
         all_set_path.update(config["Path_Tracked"])
         for name, value in config["Dataset"].items():
             assert isinstance(value, dict)
-            datasets[name] = Dataset()
+            datasets[name] = Dataset(name=name)
             for i in value:
-                if not i in ('train', 'val', 'test', 'pred', 'flow'):
+                if i not in ('train', 'val', 'test', 'infer', 'flow'):
                     continue
                 sets = []
                 for j in to_list(value[i]):
                     try:
-                        sets += _glob_absolute_pattern(all_set_path[j])
+                        sets += _glob_absolute_pattern(root / all_set_path[j])
                     except KeyError:
                         sets += _glob_absolute_pattern(j)
-                datasets[name].__setitem__(i, sets)
+                setattr(datasets[name], i, sets)
             if 'param' in value:
                 for k, v in value['param'].items():
-                    datasets[name].__setitem__(k, v)
+                    setattr(datasets[name], k, v)
         for name, path in config["Path_Tracked"].items():
-            if not name in datasets:
-                datasets[name] = Dataset()
-                datasets[name].__setitem__('test', _glob_absolute_pattern(path))
+            if name not in datasets:
+                datasets[name] = Dataset(name=name)
+                datasets[name].test = _glob_absolute_pattern(root / path)
     return datasets

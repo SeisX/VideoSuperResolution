@@ -2,38 +2,58 @@
 Unit test for DataLoader.Loader
 """
 
-from VSR.DataLoader.Loader import *
+import numpy as np
+from VSR.DataLoader.Loader import BasicLoader, QuickLoader, Select
+from VSR.Util import ImageProcess
 from VSR.DataLoader.Dataset import *
 
 try:
-    DATASETS = load_datasets('./Data/datasets.json')
+    DATASETS = load_datasets('./Data/datasets.yaml')
 except FileNotFoundError:
-    DATASETS = load_datasets('../Data/datasets.json')
+    DATASETS = load_datasets('../Data/datasets.yaml')
 
 
-def test_quickloader_prob():
-    DUT = DATASETS['SET5']
-    PROB = [0.46196357, 0.14616816, 0.11549089, 0.13816049, 0.13821688]
-    r = QuickLoader(1, DUT, 'test', 1, 1)
-    MC = 10000
-    P = r._random_select(MC).values()
+def test_loader_prob():
+    dut = DATASETS['SET5']
+    prob = [0.46196357, 0.14616816, 0.11549089, 0.13816049, 0.13821688]
+    config = Config(batch=1, scale=1, depth=1, steps_per_epoch=-1,
+                    convert_to='RGB')
+    r = BasicLoader(dut, 'test', config)
+    mc = 10000
+    p = r._random_select(mc).values()
     epsilon = 1e-2
-    for p, p_hat in zip(P, PROB):
+    for p, p_hat in zip(p, prob):
         assert np.abs(p / 1e4 - p_hat) <= epsilon
 
     r.change_select_method(Select.EQUAL_FILE)
-    MC = 10000
-    P = r._random_select(MC).values()
+    mc = 10000
+    p = r._random_select(mc).values()
     epsilon = 1e-2
-    PROB = [.2, .2, .2, .2, .2]
-    for p, p_hat in zip(P, PROB):
+    prob = [.2, .2, .2, .2, .2]
+    for p, p_hat in zip(p, prob):
         assert np.abs(p / 1e4 - p_hat) <= epsilon
 
 
+def test_basicloader_iter():
+    dut = DATASETS['91-IMAGE']
+    config = Config(batch=16, scale=4, depth=1, steps_per_epoch=200,
+                    convert_to='RGB', crop='random')
+    config.patch_size = 48
+    r = BasicLoader(dut, 'train', config, True)
+    it = r.make_one_shot_iterator('8GB')
+    for hr, lr, name in it:
+        print(name, flush=True)
+    it = r.make_one_shot_iterator('8GB')
+    for hr, lr, name in it:
+        print(name, flush=True)
+
+
 def test_quickloader_iter():
-    DUT = DATASETS['DIV2K']
-    DUT.setattr(patch_size=48, depth=1)
-    r = QuickLoader(16, DUT, 'train', 4, 200)
+    dut = DATASETS['DIV2K']
+    config = Config(batch=16, scale=4, depth=1, steps_per_epoch=200,
+                    convert_to='RGB', crop='random')
+    config.patch_size = 48
+    r = QuickLoader(dut, 'train', config, True, n_threads=8)
     it = r.make_one_shot_iterator('8GB')
     for hr, lr, name in it:
         print(name, flush=True)
@@ -42,63 +62,80 @@ def test_quickloader_iter():
         print(name, flush=True)
 
 
-def test_mploader_iter():
-    DUT = DATASETS['DIV2K']
-    DUT.setattr(patch_size=48, depth=1)
-    r = MpLoader(16, DUT, 'train', 4, 200)
-    it = r.make_one_shot_iterator('8GB', 8)
-    for hr, lr, name in it:
-        print(name, flush=True)
-    it = r.make_one_shot_iterator('8GB', 8)
-    for hr, lr, name in it:
-        print(name, flush=True)
+def test_benchmark_basic():
+    dut = DATASETS['DIV2K']
+    epochs = 4
+    config = Config(batch=8, scale=4, depth=1, patch_size=196,
+                    steps_per_epoch=100, convert_to='RGB', crop='random')
+    loader = BasicLoader(dut, 'train', config, True)
+    for _ in range(epochs):
+        r = loader.make_one_shot_iterator()
+        list(r)
 
 
-def test_benchmark_quickloader():
-    DUT = DATASETS['DIV2K']
-    DUT.setattr(patch_size=196, depth=1, random=True, max_patches=100 * 8)
-    EPOCHS = 4
-    l = QuickLoader(8, DUT, 'train', 4, 100)
-    for _ in range(EPOCHS):
-        r = l.make_one_shot_iterator()
-        for hr, lr, name in r:
-            pass
-
-
-def test_benchmark_mploader():
-    DUT = DATASETS['DIV2K']
-    DUT.setattr(patch_size=196, depth=1, random=True, max_patches=100 * 8)
-    EPOCHS = 4
-    l = MpLoader(8, DUT, 'train', 4, 100)
-    for _ in range(EPOCHS):
-        r = l.make_one_shot_iterator(shard=8)
-        for hr, lr, name in r:
-            pass
+def test_benchmark_mp():
+    dut = DATASETS['DIV2K']
+    epochs = 4
+    config = Config(batch=8, scale=4, depth=1, patch_size=196,
+                    steps_per_epoch=100, convert_to='RGB', crop='random')
+    loader = QuickLoader(dut, 'train', config, True, n_threads=8)
+    for _ in range(epochs):
+        r = loader.make_one_shot_iterator()
+        list(r)
 
 
 def test_read_flow():
-    DUT = DATASETS['MINICHAIRS']
-    DUT.setattr(patch_size=96, depth=2)
-    l = MpLoader(8, DUT, 'train', 1, 100, convert_to='RGB', no_patch=True)
-    r = l.make_one_shot_iterator('8GB', shard=8, shuffle=True)
-    img, flow, name = next(r)
-    img, flow, name = next(r)
-    img, flow, name = next(r)
-    img, flow, name = next(r)
-    r = l.make_one_shot_iterator('8GB', shard=8, shuffle=True)
-    img, flow, name = next(r)
-    img, flow, name = next(r)
-    img, flow, name = next(r)
-    img, flow, name = next(r)
+    from VSR.Framework.Callbacks import _viz_flow
+    dut = DATASETS['MINICHAIRS']
+    config = Config(batch=8, scale=1, depth=2, patch_size=96,
+                    steps_per_epoch=100, convert_to='RGB', crop='random')
+    loader = QuickLoader(dut, 'train', config, True, n_threads=8)
+    r = loader.make_one_shot_iterator('1GB', shuffle=True)
+    loader.prefetch('1GB')
+    list(r)
+    r = loader.make_one_shot_iterator('8GB', shuffle=True)
+    img, flow, name = list(r)[0]
 
     ref0 = img[0, 0, ...]
     ref1 = img[0, 1, ...]
     u = flow[0, 0, ..., 0]
     v = flow[0, 0, ..., 1]
-    H, W = u.shape
     ImageProcess.array_to_img(ref0, 'RGB').show()
     ImageProcess.array_to_img(ref1, 'RGB').show()
-    u = (u / W + 1) / 2 * 255
-    v = (v / H + 1) / 2 * 255
-    ImageProcess.array_to_img(u, 'L').show()
-    ImageProcess.array_to_img(v, 'L').show()
+    ImageProcess.array_to_img(_viz_flow(u, v), 'RGB').show()
+
+
+def test_cifar_loader():
+    from tensorflow.keras.datasets import cifar10
+    from tqdm import tqdm
+    train, test = cifar10.load_data()
+    train_data, _ = train
+    train_set = Dataset(train=[train_data], mode='numpy')
+    config = Config(batch=8, scale=1, depth=2, patch_size=32,
+                    steps_per_epoch=100, convert_to='RGB')
+    loader = BasicLoader(train_set, 'train', config, False)
+    r = loader.make_one_shot_iterator()
+    list(tqdm(r))
+
+
+def test_memory_usage():
+    dut = DATASETS['GOPRO']
+    epochs = 4
+    config = Config(batch=16, scale=4, depth=1, patch_size=196,
+                    steps_per_epoch=100, convert_to='RGB', crop='random')
+    loader = QuickLoader(dut, 'train', config, True, n_threads=8)
+    for i in range(epochs):
+        it = loader.make_one_shot_iterator('1GB', True)
+        loader.prefetch('1GB')
+        list(it)
+
+
+def main():
+    import tensorflow as tf
+    tf.logging.set_verbosity(tf.logging.DEBUG)
+    test_memory_usage()
+    pass
+
+
+if __name__ == '__main__':
+    main()

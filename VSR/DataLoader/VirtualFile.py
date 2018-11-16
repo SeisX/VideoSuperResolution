@@ -1,5 +1,5 @@
 """
-Copyright: Intel Corp. 2018
+Copyright: Wenyi Tang 2017-2018
 Author: Wenyi Tang
 Email: wenyi.tang@intel.com
 Created Date: May 9th 2018
@@ -15,16 +15,19 @@ import numpy as np
 
 from ..Util.Utility import to_list
 from ..Framework.Motion import open_flo, KITTI
+# You have to keep this
+from . import YVDecoder, NVDecoder
 
 
 class File:
     """An abstract file object
 
     NOTE: If `path` is a file, `File` opens it and calculates its length.
-    If `path` is a folder, `File` opens every file in the folder in alphabet order.
+    If `path` is a folder, `File` opens every file in the folder in abc order.
 
     Args:
-         path: path to a node (can be a file or a folder contains multiple files).
+         path: path to a **node**, where node can be a **file** or a **folder**
+           contains multiple files.
          rewind: rewind the file automatically when reaches EOF.
     """
 
@@ -40,6 +43,8 @@ class File:
             for _file in self.path.glob('*'):
                 self.file.append(_file)
                 self.length[_file.name] = _file.stat().st_size
+            # sort the files by name, because they are unordered in UNIX
+            self.file.sort()
         self.read_file = []
         self.read_pointer = 0
         self.end_pointer = sum(self.length.values())
@@ -66,7 +71,8 @@ class File:
             self.read_file.append(self.file.pop(0))
         while self.read_pointer < target:
             # move forward
-            reminder = self.length.get(self.read_file[-1].name) - self.cur_fd.tell()
+            reminder = self.length.get(self.read_file[-1].name) - \
+                       self.cur_fd.tell()
             if self.read_pointer + reminder >= target:
                 self.cur_fd.seek(target - self.read_pointer, SEEK_CUR)
                 self.read_pointer = target
@@ -103,7 +109,8 @@ class File:
         """Read `count` bytes
 
         Args:
-            count: size of bytes to read, if None (default), read all bytes of current file
+            count: size of bytes to read, if None (default),
+              read all bytes of current file
 
         Return:
             bytes: bytes read
@@ -212,37 +219,39 @@ class RawFile(File):
         """Get bytes length of one frame.
         For the detail of mode fourcc, please see https://www.fourcc.org/
 
-        NOTE: RGB, BGR, and UV channel of NV12, NV21 is packed, while YV12 and YV21 is planar, hence we have:
+        NOTE: RGB, BGR, and UV channel of NV12, NV21 is packed, while YV12 and
+          YV21 is planar, hence we have:
           - **channel0** of YV12, YV21, NV12, NV21 if Y
-          - **channel1** of YV12 is U, of YV21 is V, of NV12 is UV, of NV21 is VU
-          - **channel2** of YV12 is V, of YV21 is U
+          - **channel1** of YV12 is U, YV21 is V, NV12 is UV, NV21 is VU
+          - **channel2** of YV12 is V, YV21 is U
         """
         mode = self.mode
-        width, height = self.size
+        w, h = self.size
         if mode in ('YV12', 'YV21'):
-            return height * width * 3 // 2, [height * width, height * width // 4, height * width // 4]
+            return h * w * 3 // 2, [h * w, h * w // 4, h * w // 4]
         if mode in ('NV12', 'NV21'):
-            return height * width * 3 // 2, [height * width, height * width // 2]
+            return h * w * 3 // 2, [h * w, h * w // 2]
         if mode in ('RGB', 'BGR'):
-            return height * width * 3, [height * width * 3]
+            return h * w * 3, [h * w * 3]
         if mode in ('RGBA', 'BGRA'):
-            return height * width * 4, [height * width * 4]
+            return h * w * 4, [h * w * 4]
 
     def _get_frame_channel_shape(self):
         """Get each channel's shape according to mode and frame length.
         For the detail of mode fourcc, please see https://www.fourcc.org/
         """
         mode = self.mode
-        width, height = self.size
+        w, h = self.size
         if mode in ('YV12', 'YV21'):
-            return np.array([1, height, width]), np.array([1, height // 2, width // 2]), np.array(
-                [1, height // 2, width // 2])
+            return (np.array([1, h, w]),
+                    np.array([1, h // 2, w // 2]),
+                    np.array([1, h // 2, w // 2]))
         if mode in ('NV12', 'NV21'):
-            return np.array([1, height, width]), np.array([2, height // 2, width // 2])
+            return np.array([1, h, w]), np.array([2, h // 2, w // 2])
         if mode in ('RGB', 'BGR'):
-            return np.array([height, width, 3])
+            return np.array([h, w, 3])
         if mode in ('RGBA', 'BGRA'):
-            return np.array([height, width, 4])
+            return np.array([h, w, 4])
 
     def read_frame(self, frames=1, *args):
         """read number of `frames` of the file. A frame is a single image
@@ -251,27 +260,34 @@ class RawFile(File):
             frames: number of frames to be loaded.
         """
         if self.mode in ('YV12', 'YV21', 'NV12', 'NV21',):
-            # TODO discard uv plain for acceleration
-            _image_mode = 'L'
-            return [Image.frombytes(_image_mode, self.size, self.read(self.pitch)) for _ in range(frames)]
+            ret = []
+            for _ in range(frames):
+                data = self.read(self.pitch)
+                ret.append(Image.frombytes('YCbCr', self.size, data, self.mode))
+            return ret
         elif self.mode in ('RGB', 'RGBA'):
-            _image_mode = self.mode
-            return [Image.frombytes(_image_mode, self.size, self.read(self.pitch)) for _ in range(frames)]
+            ret = []
+            for _ in range(frames):
+                data = self.read(self.pitch)
+                ret.append(Image.frombytes(self.mode, self.size, data))
+            return ret
         elif self.mode in ('BGR',):
             _image_mode = 'RGB'
-            return [Image.frombytes(
-                _image_mode, self.size, b''.join((self.read(3)[::-1] for _ in range(self.pitch // 3))))
-                for _ in range(frames)]
+            ret = []
+            for _ in range(frames):
+                data = b''.join(
+                    (self.read(3)[::-1] for _ in range(self.pitch // 3)))
+                ret.append(Image.frombytes('RGB', self.size, data))
+            return ret
         elif self.mode in ('BGRA',):
-            _image_mode = 'RGBA'
-            img = []
+            ret = []
             for _ in range(frames):
                 buf = bytes()
                 for _ in range(self.pitch // 4):
                     c = self.read(4)
                     buf.join((c[2::-1], c[3:]))
-                img.append(Image.frombytes(_image_mode, self.size, buf))
-            return img
+                ret.append(Image.frombytes('RGBA', self.size, buf))
+            return ret
 
     def seek(self, offset, where=SEEK_SET):
         """Seek the position by `offset` relative to `where`.
@@ -283,7 +299,8 @@ class RawFile(File):
         if where == SEEK_SET:
             super(RawFile, self).seek(offset * self.pitch, where)
         if where == SEEK_CUR:
-            super(RawFile, self).seek(offset * self.pitch - self.tell() % self.pitch, where)
+            super(RawFile, self).seek(
+                offset * self.pitch - self.tell() % self.pitch, where)
         if where == SEEK_END:
             super(RawFile, self).seek(offset * self.pitch, where)
 
@@ -293,8 +310,8 @@ class RawFile(File):
 
     @property
     def frames(self):
-        """unread frames remain in `RawFile`"""
-        return (self.end_pointer - self.read_pointer) // self.pitch
+        """frames in `RawFile`"""
+        return self.end_pointer // self.pitch
 
 
 class ImageFile(File):
@@ -355,9 +372,13 @@ class ImageFile(File):
 
     @property
     def shape(self):
-        with Image.open(self.file[0]) as img:
+        if self.file:
+            file = self.file[0]
+        else:
+            file = self.read_file[0]
+        with Image.open(file) as img:
             return img.width, img.height
 
     @property
     def frames(self):
-        return len(self.file)
+        return len(self.file) + len(self.read_file)

@@ -1,5 +1,5 @@
 """
-Copyright: Intel Corp. 2018
+Copyright: Wenyi Tang 2017-2018
 Author: Wenyi Tang
 Email: wenyi.tang@intel.com
 Created Date: June 5th 2018
@@ -15,6 +15,12 @@ import tensorflow as tf
 
 
 class VDSR(SuperResolution):
+    """Accurate Image Super-Resolution Using Very Deep Convolutional Networks
+
+    Args:
+        layers: number of conv2d layers
+        filters: number of filters in conv2d(s)
+    """
 
     def __init__(self, layers=20, filters=64, name='vdsr', **kwargs):
         self.layers = layers
@@ -23,24 +29,23 @@ class VDSR(SuperResolution):
         super(VDSR, self).__init__(**kwargs)
 
     def build_graph(self):
+        super(VDSR, self).build_graph()
         with tf.variable_scope(self.name):
-            super(VDSR, self).build_graph()
             # bicubic upscale
-            bic = bicubic_rescale(self.inputs_preproc[-1], self.scale)
-            x = bic
+            # bic = bicubic_rescale(self.inputs_preproc[-1], self.scale)
+            x = self.inputs_preproc[-1]
             for _ in range(self.layers - 1):
-                x = self.conv2d(x, self.filters, 3, activation='relu', kernel_initializer='he_normal',
-                                kernel_regularizer='l2')
-            x = self.conv2d(x, self.channel, 3, kernel_initializer='he_normal', kernel_regularizer='l2')
-            self.outputs.append(x + bic)
+                x = self.relu_conv2d(x, self.filters, 3)
+            x = self.conv2d(x, self.channel, 3)
+            self.outputs.append(x + self.inputs_preproc[-1])
 
     def build_loss(self):
         with tf.name_scope('loss'):
-            opt = tf.train.AdamOptimizer(self.learning_rate)
             mae = tf.losses.absolute_difference(self.label[-1], self.outputs[-1])
             loss = tf.losses.get_total_loss()
             update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
             with tf.control_dependencies(update_ops):
+                opt = tf.train.AdamOptimizer(self.learning_rate)
                 self.loss.append(opt.minimize(loss, self.global_steps))
 
             self.train_metric['loss'] = loss
