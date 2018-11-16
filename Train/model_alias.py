@@ -1,6 +1,6 @@
 # Export model objects
 from VSR.Models import *
-from Exp import Exp
+# from Exp import Exp
 
 
 __all__ = {
@@ -18,7 +18,7 @@ __all__ = {
     'edsr': Edsr.EDSR,
     'srgan': SrGan.SRGAN,
     'flownets': FlowNetS.FlowNetS,
-    'exp': Exp.EXP3
+    # 'exp': Exp.EXP3
 }
 
 

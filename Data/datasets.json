@@ -18,7 +18,9 @@
     "FlyingChairs": "d:/Datasets/FlyingChairs/data",
     "FlyingChairsFlow": "d:/Datasets/FlyingChairs/flow/*.flo",
     "MiniFlyingChairs": "d:/Datasets/FlyingChairs/small",
-    "FlyingChairsVal": "d:/Datasets/FlyingChairs/val"
+    "FlyingChairsVal": "d:/Datasets/FlyingChairs/val",
+    "TEXTURE": "d:/Datasets/Textures/*.jpg",
+    "FRACTURE": "d:/Datasets/Fractures/"
   },
   "Path_Tracked": {
     "URBAN100": "d:/Datasets/Urban100_SR/image_SRF_2/*HR.*",
@@ -28,7 +30,8 @@
     "PIRM-SelfTest": "d:/Datasets/PIRM/PIRM_Self-Val_set/LR",
     "PIRM-Test": "d:/Datasets/PIRM/PIRM_Test/LR",
     "VID4-HR": "d:/Datasets/vid4/original/",
-    "VID4-LR": "d:/Datasets/vid4/input/"
+    "VID4-LR": "d:/Datasets/vid4/input/",
+    "SEISMIC": "d:/Datasets/Seismic/"
   },
   "Dataset": {
     "NONE": {"train": [], "val": [], "test": []},
@@ -85,6 +88,11 @@
       "train": "MiniFlyingChairs",
       "flow": "FlyingChairsFlow",
       "val": "FlyingChairsVal"
+    },
+    "FRACTURE": {
+      "train": ["SET14", "SUNHAY80", "URBAN100", "TEXTURE", "FRACTURE"],
+      "val": ["SET5"],
+      "test": ["SET5", "SEISMIC"]
     }
   }
 }
