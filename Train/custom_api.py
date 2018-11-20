@@ -107,4 +107,3 @@ def upsample(inputs, scale=4, **kwargs):
     if np.ndim(res) < 4:
         res = np.expand_dims(res, axis=-1)
     return res
-
