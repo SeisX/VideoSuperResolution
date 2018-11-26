@@ -28,7 +28,7 @@ except ImportError as ex:
     pass
 
 
-tf.flags.DEFINE_enum('model', None, list_supported_models(), help="specify a model to use")
+tf.flags.DEFINE_enum('model', 'srcnn', list_supported_models(), help="specify a model to use")
 tf.flags.DEFINE_enum('output_color', 'RGB', ('RGB', 'L', 'GRAY', 'Y'), help="specify output color format")
 tf.flags.DEFINE_integer('epochs', 50, lower_bound=1, help="training epochs")
 tf.flags.DEFINE_integer('steps_per_epoch', 200, lower_bound=1, help="specify steps in every epoch training")
@@ -40,7 +40,7 @@ tf.flags.DEFINE_string('test', None, help="specify another dataset for testing")
 tf.flags.DEFINE_string('infer', None, help="specify a file, a path or a dataset for inferring")
 tf.flags.DEFINE_string('save_dir', '../Results', help="specify a folder to save checkpoint and output images")
 tf.flags.DEFINE_string('data_config', '../Data/datasets.yaml', help="path to data config file")
-tf.flags.DEFINE_string('dataset', 'none', help="specify a dataset alias for training")
+tf.flags.DEFINE_string('dataset', '91-image', help="specify a dataset alias for training")
 tf.flags.DEFINE_string('memory_limit', None, help="limit the memory usage. i.e. '4GB', '1024MB'")
 tf.flags.DEFINE_string('comment', None, help="append a postfix string to save dir")
 tf.flags.DEFINE_multi_string('add_custom_callbacks', None, help="")

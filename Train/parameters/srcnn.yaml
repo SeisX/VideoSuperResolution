@@ -10,7 +10,7 @@ srcnn:
   channel: 1
 
 batch: 64
-patch_size: 96
+patch_size: 48
 lr: 1.0e-2
 lr_decay:
     method: multistep

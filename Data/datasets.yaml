@@ -5,7 +5,8 @@
 # Add root dir to dataset
 # In current version, Root only affects members in "Path" and "Path_Tracked"
 Root:
-  /mnt/data/datasets/
+  d:/Datasets/
+  # /mnt/data/datasets/
 #  c:/work/datasets
 Path:
   BSD100: BSD100_SR/image_SRF_2/*HR.*
