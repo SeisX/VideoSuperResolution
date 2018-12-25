@@ -303,7 +303,7 @@ class BasicLoader:
                 frames.append(self._vf_gen_lr_hr_pair(vf, depth, i))
         vf.reopen()  # necessary, rewind the read pointer
         return frames
-
+    
     def _generate_crop_grid(self, frames, size, shuffle=False):
         """generate randomly cropped box of `frames`
 
@@ -468,6 +468,214 @@ class QuickLoader(BasicLoader):
         self.threads = []
         super(QuickLoader, self).__init__(dataset, method, config, augmentation,
                                           **kwargs)
+
+    def prefetch(self, memory_usage=None):
+        """Prefetch data.
+
+        This call will spawn threads of `_prefetch` and returns immediately.
+        The next call of `make_one_shot_iterator` will join all the threads.
+        If this is not called in advance, data will be fetched at
+        `make_one_shot_iterator`.
+
+        Args:
+            memory_usage: desired virtual memory to use, could be int (bytes) or
+              a readable string ('3GB', '1TB'). Default to use all available
+              memories.
+
+        Note: call `prefetch` twice w/o `make_one_shot_iterator` is
+          undefined behaviour.
+        """
+        for i in range(self.shard):
+            t = th.Thread(target=self._prefetch,
+                          args=(memory_usage, self.shard, i),
+                          name='fetch_thread_{}'.format(i))
+            t.start()
+            self.threads.append(t)
+
+    def make_one_shot_iterator(self, memory_usage=None, shuffle=False):
+        """make an `EpochIterator` to enumerate batches of the dataset. Specify
+        `shard` will divide loading files into `shard` shards in order to
+        execute in parallel.
+
+        Args:
+            memory_usage: desired virtual memory to use, could be int (bytes) or
+              a readable string ('3GB', '1TB'). Default to use all available
+              memories.
+            shuffle: A boolean whether to shuffle the patch grids.
+
+        Return:
+            An EpochIterator
+
+        Known issues:
+            If data of either shard is too large (i.e. use 1 shard and total
+            frames is around 6GB in my machine), windows Pipe may broke and
+            `get()` never returns.
+        """
+
+        if not self.threads:
+            self.prefetch(memory_usage)
+        for t in self.threads:
+            t.join()
+        self.threads.clear()
+        # reduce
+        grids = self._generate_crop_grid(self.frames, self.patches_per_epoch,
+                                         shuffle=shuffle)
+        return EpochIterator(self, grids)
+
+class QuickLoaderL(BasicLoader):
+    '''Quickloader for prepared instance(LR) and label(HR) images'''
+
+    def __init__(self, dataset, method, config, augmentation=False, n_threads=1,
+                 **kwargs):
+        self.shard = n_threads
+        self.threads = []
+        super(QuickLoaderL, self).__init__(dataset, method, config, augmentation,
+                                          **kwargs)
+
+    def _read_file(self, dataset):
+        """Initialize all `File` objects"""
+        if dataset.mode.lower() == 'pil-image1':
+            if self.flow:
+                # map flow
+                flow = {f.stem: f for f in self.flow}
+                self.file_objects = [ImageFile(fp).attach_flow(flow[fp.stem])
+                                     for fp in self.file_names if '_out.' in fp]
+                self.infile_objects = [ImageFile(fp).attach_flow(flow[fp.stem])
+                                       for fp in self.file_names if '_in.' in fp]
+            else:
+                self.file_objects = [ImageFile(fp) for fp in self.file_names 
+                                     if '_out.' in str(fp)]
+                self.infile_objects = [ImageFile(fp) for fp in self.file_names 
+                                     if '_in.' in str(fp)]
+        elif dataset.mode.upper() in _ALLOWED_RAW_FORMAT:
+            self.file_objects = [
+                RawFile(fp, dataset.mode, (dataset.width, dataset.height))
+                for fp in self.file_names if '_out.' in fp]
+            self.infile_objects = [
+                RawFile(fp, dataset.mode, (dataset.width, dataset.height))
+                for fp in self.file_names if '_in.' in fp]
+        elif dataset.mode.lower() == 'numpy':
+            raise TypeError
+        return self
+
+    def _random_select(self, size, seed=None):
+        """Randomly select `size` file objects
+
+        Args:
+            size: the number of files to select
+            seed: set the random seed (of `numpy.random`)
+
+        Return:
+            Dict: map file objects to its select quantity.
+        """
+        if seed:
+            np.random.seed(seed)
+        x = np.random.rand(size)
+        # Q: Is `s` relevant to poisson dist.?
+        s = {f2: 0 for f2 in zip(self.infile_objects, self.file_objects)}
+        for _x in x.tolist():
+            _x *= np.ones_like(self.prob)
+            diff = self.prob >= _x
+            index = diff.nonzero()[0].tolist()
+            if index:
+                index = index[0]
+            else:
+                index = 0
+            s[(self.infile_objects[index], self.file_objects[index])] += 1
+        return s
+       
+    def _vf_gen_lr_hr_pair(self, vf_lr, vf_hr, depth, index):
+        vf_lr.seek(index)
+        vf_hr.seek(index)
+
+        frames_hr = [shrink_to_multiple_scale(img, self.scale)
+                     if self.modcrop else img for img in vf_hr.read_frame(depth)]
+        frames_lr = [shrink_to_multiple_scale(img, self.scale)
+                     if self.modcrop else img for img in vf_lr.read_frame(depth)]
+        
+        frames_hr = [img.convert(self.color_format) for img in frames_hr]
+        frames_lr = [img.convert(self.color_format) for img in frames_lr]
+        return frames_hr, frames_lr, (vf_lr.name, index, vf_lr.frames)
+
+    def _process_at_files(self, vf_lr, vf_hr, clips=1):
+        """load frames of both HR and LR `File` into memory.
+
+        Args:
+            vf_lr: A `File` object of LR image.
+            vf_hr: A `File` object of HR image.
+            clips: an integer to specify how many clips to generate from `vf`.
+
+        Return:
+            List of Tuple: containing (HR, LR, name) respectively
+        """
+        assert isinstance(vf_lr, (RawFile, ImageFile))
+        assert isinstance(vf_hr, (RawFile, ImageFile))
+
+        tf.logging.debug('Prefetching ' + vf_lr.name)
+        depth = self.depth
+        # read all frames if depth is set to -1
+        if depth == -1:
+            depth = vf_lr.frames
+        index = np.arange(0, vf_lr.frames - depth + 1)
+        np.random.shuffle(index)
+        frames = []
+        for i in index[:clips]:
+            if self.flow:
+                raise TypeError
+            else:
+                frames.append(self._vf_gen_lr_hr_pair(vf_lr, vf_hr, depth, i))
+        vf_lr.reopen()  # necessary, rewind the read pointer
+        vf_hr.reopen()
+        return frames
+
+    def _prefetch(self, memory_usage=None, shard=1, index=0):
+        """Prefetch `size` files and load into memory. Specify `shard` will
+        divide loading files into `shard` shards in order to execute in
+        parallel.
+
+        Args:
+            memory_usage: desired virtual memory to use, could be int (bytes) or
+              a readable string ('3GB', '1TB'). Default to use all available
+              memories.
+            shard: an int scalar to specify the number of shards operating in
+              parallel.
+            index: an int scalar, representing shard index
+        """
+
+        if self.loaded & (1 << index):
+            return
+        # check memory usage
+        if isinstance(memory_usage, str):
+            memory_usage = Utility.str_to_bytes(memory_usage)
+        if not memory_usage:
+            memory_usage = self.free_memory_on_start
+        memory_usage = np.min(
+            [np.uint64(memory_usage), self.free_memory_on_start])
+        capacity = self.size
+        frames = []
+        tf.logging.debug('memory limit: ' + str(memory_usage))
+        if capacity <= memory_usage:
+            # load all clips
+            interval = int(np.ceil(len(self.file_objects) / shard))
+            if index == shard - 1:
+                for file_lr, file_hr in zip(self.infile_objects[index * interval:],
+                                            self.file_objects[index * interval:]):
+                    frames += self._process_at_files(file_lr, file_hr, file_lr.frames)
+            else:
+                for file_lr, file_hr in zip(self.infile_objects[index * interval:(index + 1) * interval],
+                                            self.file_objects[index * interval:(index + 1) * interval]):
+                    frames += self._process_at_files(file_lr, file_hr, file_lr.frames)
+            self.frames += frames
+            self.loaded |= (1 << index)
+        else:
+            scale_factor = 0.8
+            prop = memory_usage / capacity / shard * scale_factor
+            size = int(np.round(len(self) * prop))
+            for file2, amount in self._random_select(size).items():
+                frames += self._process_at_files(copy.deepcopy(file2[0]),
+                                                 copy.deepcopy(file2[1]),
+                                                 amount)
+            self.frames = frames
 
     def prefetch(self, memory_usage=None):
         """Prefetch data.

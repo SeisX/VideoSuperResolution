@@ -32,6 +32,13 @@ Path:
   MiniFlyingChairs: FlyingChairs/data
   FlyingChairsTest: FlyingChairs/test
   FlyingChairsFlow: FlyingChairs/flow/*.flo
+  # Image set with manually labeled HR images
+  TextureLR: Textures_manual/train/in/*.jpg
+  TextureHR: Textures_manual/train/out/*.jpg
+  TextureLRVal: Textures_manual/val/in/*.jpg
+  TextureHRVal: Textures_manual/val/out/*.jpg 
+  TextureLRTst: Textures_manual/test/in/*.jpg
+  TextureHRTst: Textures_manual/test/out/*.jpg  
 
 Path_Tracked:
   URBAN100: Urban100_SR/image_SRF_4/*HR.*
@@ -41,6 +48,7 @@ Path_Tracked:
   PIRM-SelfTest: PIRM/PIRM_Self-Val_set/LR
   PIRM-Test: PIRM/PIRM_Test/LR
   VID4-HR: vid4/original/
+  DISCONT: Discontinuity/
 
 # bind datasets to a name, called in scripts
 Dataset:
@@ -122,3 +130,10 @@ Dataset:
         train: 'x'
         val: 'y'
         test: 'y[:1000]'
+
+  TEXTUREL: # texture images as input LR images with manually labeled HR images 
+    train: [TextureLR, TextureHR]
+    val: [TextureLRVal, TextureHRVal]
+    test: [TextureLRTst, TextureHRTst]
+    infer: [DISCONT]
+    

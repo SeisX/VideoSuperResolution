@@ -4,3 +4,7 @@ vdsr:
   filters: 64
   scale: 4
   channel: 1
+
+batch: 64
+patch_size: 48
+lr: 1.0e-2

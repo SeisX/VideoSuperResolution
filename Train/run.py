@@ -12,7 +12,7 @@ from functools import partial
 from pathlib import Path
 
 from VSR.DataLoader.Dataset import load_datasets, Dataset
-from VSR.DataLoader.Loader import QuickLoader
+from VSR.DataLoader.Loader import QuickLoader, QuickLoaderL
 from VSR.Models import get_model, list_supported_models
 from VSR.Util.Config import Config
 from VSR.Framework.Callbacks import save_image, to_rgb, to_gray, lr_decay
@@ -47,6 +47,7 @@ tf.flags.DEFINE_multi_string('add_custom_callbacks', None, help="")
 tf.flags.DEFINE_bool('export', False, help="whether to export tf model")
 tf.flags.DEFINE_bool('freeze', False, help="whether to export freeze model, ignored if export is False")
 tf.flags.DEFINE_bool('v', False, help="show verbose")
+tf.flags.DEFINE_bool('labeled', False, help="labeled high-resolution image or not")
 
 
 def check_args(opt):
@@ -147,6 +148,8 @@ def main(*args):
 
     model_params = opt.get(opt.model)
     opt.update(model_params)
+    if opt.labeled:
+        opt.scale = 1
     model = get_model(opt.model)(**model_params)
     root = '{}/{}'.format(opt.save_dir, model.name)
     if opt.comment:
@@ -164,13 +167,17 @@ def main(*args):
     dump(opt)
     with trainer(model, root, verbosity) as t:
         # prepare loader
-        loader = partial(QuickLoader, n_threads=opt.threads)
+        if opt.labeled:
+            loader = partial(QuickLoaderL, n_threads=opt.threads)
+        else:
+            loader = partial(QuickLoader, n_threads=opt.threads)
         train_loader = loader(train_data, 'train', train_config,
                               augmentation=True)
         val_loader = loader(train_data, 'val', train_config, crop='center',
                             steps_per_epoch=1)
         test_loader = loader(test_data, 'test', test_config)
-        infer_loader = loader(infer_data, 'infer', infer_config)
+        # For infering, QuickLoaderL is not valid, instead it should be QuickLoader
+        infer_loader = partial(QuickLoader, n_threads=opt.threads)(infer_data, 'infer', infer_config)
         # fit
         t.fit([train_loader, val_loader], train_config)
         # validate
