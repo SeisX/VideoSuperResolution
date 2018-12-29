@@ -39,7 +39,7 @@ class SRCNN(SuperResolution):
             # x = bicubic_rescale(x, self.scale)
             f = self.filters
             ks = self.kernel_size
-            x = self.relu_conv2d(x, f, ks[0], name='conv1')
+            x = self.relu_conv2d(x, f, ks[0])
             for i in range(1, self.layers - 1):
                 x = self.relu_conv2d(x, f, ks[i])
             x = self.conv2d(x, self.channel, ks[-1])
