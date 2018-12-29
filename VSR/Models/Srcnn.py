@@ -39,7 +39,7 @@ class SRCNN(SuperResolution):
             # x = bicubic_rescale(x, self.scale)
             f = self.filters
             ks = self.kernel_size
-            x = self.relu_conv2d(x, f, ks[0])
+            x = self.relu_conv2d(x, f, ks[0], name='conv1')
             for i in range(1, self.layers - 1):
                 x = self.relu_conv2d(x, f, ks[i])
             x = self.conv2d(x, self.channel, ks[-1])
@@ -66,4 +66,7 @@ class SRCNN(SuperResolution):
         tf.summary.scalar('loss/mse', self.metrics['mse'])
         tf.summary.scalar('psnr', self.metrics['psnr'])
         tf.summary.scalar('ssim', self.metrics['ssim'])
-        tf.summary.image('SR', self.outputs[-1], 1)
+        tf.summary.image('SR', self.outputs[-1], 10)
+        # output convolution kernel of first conv layer
+        filter_1 = tf.get_collection(tf.GraphKeys.VARIABLES, self.name)[0]
+        tf.summary.image('Conv1_kernel', tf.transpose(filter_1, perm=[3,0,1,2]), 64)
