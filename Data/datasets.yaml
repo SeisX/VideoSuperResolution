@@ -38,7 +38,14 @@ Path:
   TextureLRVal: Textures_manual/val/in/*.jpg
   TextureHRVal: Textures_manual/val/out/*.jpg 
   TextureLRTst: Textures_manual/test/in/*.jpg
-  TextureHRTst: Textures_manual/test/out/*.jpg  
+  TextureHRTst: Textures_manual/test/out/*.jpg 
+  # Image set for coherence in section form
+  CohLR: Coherence_Section/train/in/*.jpg
+  CohHR: Coherence_Section/train/out/*.jpg
+  CohLRVal: Coherence_Section/val/in/*.jpg
+  CohHRVal: Coherence_Section/val/out/*.jpg 
+  # CohLRTst: Coherence_Section/val/in/*.jpg
+  # CohHRTst: Coherence_Section/val/out/*.jpg   
 
 Path_Tracked:
   URBAN100: Urban100_SR/image_SRF_4/*HR.*
@@ -136,4 +143,9 @@ Dataset:
     val: [TextureLRVal, TextureHRVal]
     test: [TextureLRTst, TextureHRTst]
     infer: [DISCONT]
-    
+
+  COHERENCE: # Coherence in form of section 
+    train: [CohLR, CohHR]
+    val: [CohLRVal, CohHRVal]
+    test: [CohLRVal, CohHRVal]
+    infer: [DISCONT]

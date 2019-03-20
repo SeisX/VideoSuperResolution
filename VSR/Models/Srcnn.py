@@ -66,7 +66,7 @@ class SRCNN(SuperResolution):
         tf.summary.scalar('loss/mse', self.metrics['mse'])
         tf.summary.scalar('psnr', self.metrics['psnr'])
         tf.summary.scalar('ssim', self.metrics['ssim'])
-        tf.summary.image('SR', self.outputs[-1], 10)
+        tf.summary.image('SR', self.outputs[-1], 1)
         # output convolution kernel of first conv layer
         filter_1 = tf.get_collection(tf.GraphKeys.VARIABLES, self.name)[0]
         tf.summary.image('Conv1_kernel', tf.transpose(filter_1, perm=[3,0,1,2]), 64)
