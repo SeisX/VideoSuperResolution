@@ -27,6 +27,9 @@
 
 # @20181217 k=[9,5,5]
 #python run.py --model=srcnn --comment='ep100lr0.01' --labeled=True --infer=d:/Datasets/Textures_manual/discont/
+# @20190327 *PREDICTION* do prediction for new fracture dataset TH10Q3D
+# python run.py --model=srcnn --comment='ep100lr0.01' --labeled=True --infer=d:/Datasets/TH10Q3D/slice/
+# python run.py --model=srcnn --comment='ep100lr0.01' --labeled=True --infer=d:/Datasets/TH10Q3D/zoom/slice/
 
 # @20181217 k=[9,3,3]
 # python run.py --model=srcnn --comment='ep100lr0.01k3' --labeled=True --infer=d:/Datasets/Textures_manual/discont/
@@ -35,6 +38,10 @@
 # python run.py --model=srcnn --comment='ep100lr0.01k3' --labeled=True --infer=d:/Datasets/Discontinuity/Dip_Amp_C3_1024_0.2.png
 # @20190214 *PREDICTION* do prediction for new fracture dataset
 # python run.py --model=srcnn --comment='ep100lr0.01k3' --labeled=True --infer=d:/Datasets/FracTest/time/
+# @20190327 *PREDICTION* do prediction for new fracture dataset TH10Q3D
+# python run.py --model=srcnn --comment='ep100lr0.01k3' --labeled=True --infer=d:/Datasets/TH10Q3D/slice/
+# python run.py --model=srcnn --comment='ep100lr0.01k3' --labeled=True --infer=d:/Datasets/TH10Q3D/zoom/slice/
+python run.py --model=srcnn --comment='ep100lr0.01k3' --labeled=True --infer=d:/Datasets/TH10Q3D/zoom/slice/sim40_time_3624_zoom.png
 
 # @20181217 k=[9,5,3]
 # python run.py --model=srcnn --output_color=GRAY --dataset=texturel --infer=discont --comment=ep100lr0.01k953 --labeled=True --epochs=100
@@ -75,6 +82,11 @@
 # @20190214 *PREDICTION* do prediction for new fracture dataset
 # python run.py --model=srcnn --output_color=GRAY --comment='coh_k9_3_11' --labeled=True --infer=d:/Datasets/FracTest/line/
 # python run.py --model=srcnn --output_color=GRAY --comment='coh_k9_5_5' --labeled=True --infer=d:/Datasets/FracTest/line/
+# @20190327 *PREDICTION* do prediction for new fracture dataset TH10Q3D
+# python run.py --model=srcnn --output_color=GRAY --comment='coh_k9_3_11' --labeled=True --infer=d:/Datasets/TH10Q3D/sect/
+# python run.py --model=srcnn --output_color=GRAY --comment='coh_k9_5_5' --labeled=True --infer=d:/Datasets/TH10Q3D/sect/
+# python run.py --model=srcnn --output_color=GRAY --comment='coh_k9_3_11' --labeled=True --infer=d:/Datasets/TH10Q3D/zoom/sect
+# python run.py --model=srcnn --output_color=GRAY --comment='coh_k9_5_5' --labeled=True --infer=d:/Datasets/TH10Q3D/zoom/sect
 
 #--------------------------------
 ## ESPCN model

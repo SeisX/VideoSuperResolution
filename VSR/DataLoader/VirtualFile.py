@@ -12,6 +12,7 @@ from pathlib import Path
 from io import SEEK_SET, SEEK_CUR, SEEK_END, BytesIO
 from PIL import Image
 import numpy as np
+import segyio
 
 from ..Util.Utility import to_list
 from ..Framework.Motion import open_flo, KITTI
@@ -382,3 +383,83 @@ class ImageFile(File):
     @property
     def frames(self):
         return len(self.file) + len(self.read_file)
+
+class SegyFile(File):
+    """For reading seismic segy files. The file is lazy loaded, which means
+    the file is opened but not loaded into memory at initialization.
+
+    Args:
+         path: a string representing `node` path.
+         mode: a string, since raw file has no headers, type must be
+           explicitly given, see `_ALLOWED_RAW_FORMAT`.
+         size: a tuple of int (width, height). If `path` is a folder,
+           all files in it must be the same shape.
+         rewind: rewind the file automatically when reaches EOF
+
+    Raise:
+        TypeError: if `mode` is not supported
+    """
+
+    def __init__(self, path, rewind=False):
+        self.fname = path
+        self.size, self.names = self._get_frame_pitch()
+        super(SegyFile, self).__init__(path, rewind)
+
+    def _get_frame_pitch(self):
+        """Get bytes length of one frame.
+        For the detail of mode fourcc, please see https://www.fourcc.org/
+
+        NOTE: RGB, BGR, and UV channel of NV12, NV21 is packed, while YV12 and
+          YV21 is planar, hence we have:
+          - **channel0** of YV12, YV21, NV12, NV21 if Y
+          - **channel1** of YV12 is U, YV21 is V, NV12 is UV, NV21 is VU
+          - **channel2** of YV12 is V, YV21 is U
+        """
+        with segyio.open(self.fname, ignore_geometry=True) as sfile:
+            ntr = sfile.tracecount
+            ns = sfile.samples.size
+            lineList = set([sfile.header[i][segyio.TraceField.FieldRecord] for i in range(ntr)])
+            nline = len(lineList)
+            if ntr%nline != 0:
+                raise ValueError("Invaliad crossline number!")
+            return [nline, ntr//nline, ns], lineList
+
+    def read_frame(self, frames=1, *args):
+        """read number of `frames` of the file. A frame is a single image
+
+        Args:
+            frames: number of frames to be loaded.
+        """
+        ret = []
+        nline, ncdp, ns = self.size
+        with segyio.open(self.fname, ignore_geometry=True) as sfile:
+            for i in range(nline):
+                ret.append(sfile.trace[i*ncdp : (i+1)*ncdp])
+            return ret
+
+    def seek(self, offset, where=SEEK_SET):
+        """Seek the position by `offset` relative to `where`.
+
+        Args:
+             offset: move the read pointer by `offset` bytes.
+             where: same as io.SEEK_END, io.SEEK_CUR or io.SEEK_SET.
+        """
+        nline, ncdp, ns = self.size
+        pitch = ncdp * ns
+        if where == SEEK_SET:
+            super(SegyFile, self).seek(offset * pitch, where)
+        if where == SEEK_CUR:
+            super(SegyFile, self).seek(offset * pitch - self.tell() % pitch, where)
+        if where == SEEK_END:
+            super(SegyFile, self).seek(offset * pitch, where)
+
+    @property
+    def shape(self):
+        return self.size
+
+    @property
+    def frames(self):
+        """frames in `SegyFile`"""
+        nline, ncdp, ns = self.size
+        pitch = ncdp * ns 
+        return self.end_pointer // pitch

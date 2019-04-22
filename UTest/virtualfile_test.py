@@ -6,14 +6,23 @@ from VSR.DataLoader.VirtualFile import *
 from VSR.DataLoader.Dataset import *
 from VSR.Util.ImageProcess import img_to_array
 
+# try:
+#     DATASETS = load_datasets('./Data/datasets.json')
+# except FileNotFoundError:
+#     DATASETS = load_datasets('../Data/datasets.json')
 try:
-    DATASETS = load_datasets('./Data/datasets.json')
+    DATASETS = load_datasets('./Data/datasets.yaml')
 except FileNotFoundError:
-    DATASETS = load_datasets('../Data/datasets.json')
+    DATASETS = load_datasets('../Data/datasets.yaml')
 
-RAW = DATASETS['MCL-V'].test[0]
+# RAW = DATASETS['MCL-V'].test[0]
 IMG = 'data/set5_x2/img_001_SRF_2_LR.png'
+SGY = DATASETS['SEGYSEIS0326'].train[0]
 
+def test_segy_read():
+    vf = SegyFile(SGY)
+    f1 = vf.read_frame(1)
+    print(f1)
 
 def test_raw_seek():
     vf = RawFile(RAW, 'YV12', [1920, 1080])
@@ -66,9 +75,9 @@ def test_vf_copy():
         pass
     vf1.read_frame(1)
 
-
 def main():
-    pass
+    test_segy_read()
+    # pass
 
 
 if __name__ == '__main__':

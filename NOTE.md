@@ -167,7 +167,7 @@
 
 下图参数：k = [9,5,5]
 
-![prd](./Results/srcnn_ep100lr0.01/TEXTUREL/pic_295_in_PR.png "Prediction")
+![prd](./Results/srcnn_ep100lr0.01k955_weights/TEXTUREL/pic_295_in_PR.png "Prediction")
 
 下图参数：k = [11,7,7]
 

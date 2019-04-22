@@ -17,7 +17,7 @@ import threading as th
 import copy
 from psutil import virtual_memory
 
-from .VirtualFile import RawFile, ImageFile, _ALLOWED_RAW_FORMAT
+from .VirtualFile import (RawFile, ImageFile, _ALLOWED_RAW_FORMAT, SegyFile)
 from ..Util.ImageProcess import (
     crop, imresize, shrink_to_multiple_scale, array_to_img)
 from ..Util import Utility
@@ -180,6 +180,8 @@ class BasicLoader:
             self.file_objects = [
                 RawFile(fp, dataset.mode, (dataset.width, dataset.height))
                 for fp in self.file_names]
+        elif dataset.mode.lower() == ' segy':
+            self.file_objects = [SegyFile(fp) for fp in self.file_names if '_ftr' in str(fp)]
         elif dataset.mode.lower() == 'numpy':
             """already loaded numpy array, in case anyone want to use 
             external loaders, data can be a 4-D or 5-D ndarray"""
@@ -286,7 +288,7 @@ class BasicLoader:
         Return:
             List of Tuple: containing (HR, LR, name) respectively
         """
-        assert isinstance(vf, (RawFile, ImageFile))
+        assert isinstance(vf, (RawFile, ImageFile, SegyFile))
 
         tf.logging.debug('Prefetching ' + vf.name)
         depth = self.depth
@@ -554,6 +556,9 @@ class QuickLoaderL(BasicLoader):
             self.infile_objects = [
                 RawFile(fp, dataset.mode, (dataset.width, dataset.height))
                 for fp in self.file_names if '_in.' in fp]
+        elif dataset.mode.lower() == 'segy':
+            self.file_objects = [SegyFile(fp) for fp in self.file_names if '_lbl' in str(fp)]
+            self.infile_objects = [SegyFile(fp) for fp in self.file_names if '_ftr' in str(fp)]
         elif dataset.mode.lower() == 'numpy':
             raise TypeError
         return self
@@ -608,8 +613,8 @@ class QuickLoaderL(BasicLoader):
         Return:
             List of Tuple: containing (HR, LR, name) respectively
         """
-        assert isinstance(vf_lr, (RawFile, ImageFile))
-        assert isinstance(vf_hr, (RawFile, ImageFile))
+        assert isinstance(vf_lr, (RawFile, ImageFile, SegyFile))
+        assert isinstance(vf_hr, (RawFile, ImageFile, SegyFile))
 
         tf.logging.debug('Prefetching ' + vf_lr.name)
         depth = self.depth
