@@ -7,6 +7,11 @@
     1. 准备数据，下载各种datasets保存到d盘Datasets路径下
     2. 使用python train.py srcnn --batch=128执行模型训练，默认情况下需要有91-image数据
 
+- 实际操作
+    1. VDSR超分辨率，Interpretation论文
+        - @20190423：python train.py vdsr --dataset=FRACTURE --scale=2 --epochs=500 --batch=64 --comment=fracture
+            > 当batch从16变为64时，计算时间增加3到4倍
+
 ## 注意事项
 - TensorFlow版本
 

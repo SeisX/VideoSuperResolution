@@ -36,7 +36,7 @@ def main(*args, **kwargs):
     args.add_argument('--retrain', type=bool, default=False, help='retrain the model from scratch')
     # dataset options
     args.add_argument('--dataconfig', type=str, default='../Data/datasets.json', help='the path to dataset config json file')
-    args.add_argument('--dataset', type=str, default='91-IMAGE', help='specified dataset name(as described in config file, default 91-image')
+    args.add_argument('--dataset', type=str, default='FRACTURE', help='specified dataset name(as described in config file, default 91-image')
     args.add_argument('--patch_size', type=int, default=48, help='patch size of cropped training and validating sub-images, default 48')
     args.add_argument('--depth', type=int, default=1, help='image depth used for video sources, default 1')
     args.add_argument('--parallel', type=int, default=1, help='number of cores used to load training sets in parallel')

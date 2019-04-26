@@ -160,11 +160,12 @@ class SuperResolution(Layers):
             self.feed_dict[self.label[i]] = label[i]
         loss = kwargs.get('loss') or self.loss
         loss = to_list(loss)
-        loss = tf.get_default_session().run(list(self.train_metric.values()) + loss, feed_dict=self.feed_dict)
+        metrics = tf.get_default_session().run(loss + list(self.train_metric.values()) + [self.summary_op],
+                                               feed_dict=self.feed_dict)
         ret = {}
-        for k, v in zip(self.train_metric, loss):
+        for k, v in zip(self.train_metric, metrics[1:-1]):
             ret[k] = v
-        return ret
+        return ret, metrics[-1]
 
     def validate_batch(self, feature, label, **kwargs):
         r"""validate one batch for one step

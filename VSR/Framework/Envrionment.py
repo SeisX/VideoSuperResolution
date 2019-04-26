@@ -171,7 +171,9 @@ class Environment:
         print(f'Training model: {self.model.name.upper()}')
         print('===================================')
         self.model.summary()
-        summary_writer = tf.summary.FileWriter(str(self.logdir), graph=tf.get_default_graph())
+        # Store summary both for training and validation process
+        train_writer = tf.summary.FileWriter(str(self.logdir)+'/train', graph=tf.get_default_graph())
+        val_writer = tf.summary.FileWriter(str(self.logdir)+'/val')
         lr = learning_rate
         global_step = self.model.global_steps.eval()
         if learning_rate_schedule and callable(learning_rate_schedule):
@@ -193,12 +195,13 @@ class Environment:
                         feature = fn(feature, name=name)
                     for fn in self.label_callbacks:
                         label = fn(label, name=name)
-                    loss = self.model.train_batch(feature=feature, label=label, learning_rate=lr, epochs=epoch)
+                    loss, train_summary_op = self.model.train_batch(feature=feature, label=label, learning_rate=lr, epochs=epoch)
                     global_step = self.model.global_steps.eval()
                     if learning_rate_schedule and callable(learning_rate_schedule):
                         lr = learning_rate_schedule(lr, epochs=epoch, steps=global_step)
                     for k, v in loss.items():
                         avg_meas[k] = avg_meas[k] + [v] if avg_meas.get(k) else [v]
+                    train_writer.add_summary(train_summary_op, global_step)
                     r.set_postfix(loss)
             for k, v in avg_meas.items():
                 print(f'| Epoch average {k} = {np.mean(v):.6f} |')
@@ -217,13 +220,14 @@ class Environment:
                     if k not in val_metrics:
                         val_metrics[k] = []
                     val_metrics[k] += [v]
-                summary_writer.add_summary(val_summary_op, global_step)
+                val_writer.add_summary(val_summary_op, global_step)
             for k, v in val_metrics.items():
                 print(f'{k}: {np.mean(v):.6f}', end=', ')
             print('')
             self._save_model(sess, epoch)
         # flush all pending summaries to disk
-        summary_writer.close()
+        train_writer.close()
+        val_writer.close()
 
     def test(self, dataset, **kwargs):
         r"""Test model with test sets in dataset

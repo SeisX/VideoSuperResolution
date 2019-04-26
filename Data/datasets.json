@@ -91,7 +91,7 @@
     },
     "FRACTURE": {
       "train": ["SET14", "SUNHAY80", "URBAN100", "TEXTURE", "FRACTURE"],
-      "val": ["SET5"],
+      "val": ["SET5", "SEISMIC"],
       "test": ["SET5", "SEISMIC"]
     }
   }
