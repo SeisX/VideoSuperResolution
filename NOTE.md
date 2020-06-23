@@ -80,10 +80,50 @@
 ---
 ### 网络框架 (VSR/Framework)
 > 提供SuperResolution的基类网络结构，以及网络训练的通用模块
+
+#### LayersHelper.py
+> commonly used layers helper
+- class Layers(object)
+    > 对卷积神经网络所用到的基本网络层进行封装定义，并提供一些基本的操作
+    - batch_norm
+    - conv2d
+    - conv3d
+    - deconv2d
+    - deconv3d
+    - dense
+    - resblock
+    - resblock3d
+
+
 #### SuperResolution.py
+> Framework for network model (tensorflow)
+- class SuperResolution(Layers)
+    > A utility class helps for building SR architectures easily
+    - **train_batch**
+        > training one batch one step.
+    - 
+- class SuperResolutionDisc(SuperResolution)
+    > SuperResolution with Discriminator. 用于GAN网络
 
 #### Trainer.py
+> Extend the pre-Environment module, provide different and extensible training methodology for SISR, VSR or other image tasks.
+- class Trainer
+    > A pure interface trainer
 
+- class VSR(Trainer)
+    > Default trainer for task SISR or VSR
+    - fit
+    - infer
+    - benchmark
+    ---
+    - fn_train_each_epoch
+    - fn_train_each_step
+    - fn_infer_each_step
+    - fn_benchmark_each_step
+    - fn_benchmark_body
+
+#### Callbacks.py
+> Training environment callbacks preset
 
 ---
 ### 网络模型 (VSR/Models)
@@ -102,3 +142,43 @@
 
     - **存在问题**：使用默认VSCode配置文件，调试的当前路径是VideoSuperResolution，而run.py位于当前路径的Train子路径下，导致程序中无法根据相对路径获取数据集参数的配置文件，调试无法进行
     - **解决方式**：修改.vscode下*launch.json*调试配置文件，以当前所用的Current File类型调试器为例，添加cwd控制参数，设置调试器的当前工作目录为"<u>cwd</u>": "${workspaceFolder}/Train"，然后调试能够正常进行。
+
+## 测试Examples
+### SRCNN
+- Logs 
+> (@20181204): using the following commands, it output a relatively good test result enhancing the discontinuity of fracutre detection images
+
+- Commands
+    ```
+    python run.py --model=srcnn --output_color=GRAY --dataset=texturel --infer=d:/Datasets/Discontinuity/ --comment=ep100lr0.01 --labeled=True --epochs=100 # learning rate = 0.01
+    ```
+    
+- Performances
+
+![in](./Results/srcnn_ep100lr0.01/dataset/pic_295_in.jpg "Instance")
+![out](./Results/srcnn_ep100lr0.01/dataset/pic_295_out.jpg "Label")
+
+尝试了不同参数进行测试
+
+下图参数：k = [9,3,3]
+
+![prd](./Results/srcnn_ep100lr0.01k3/TEXTUREL/pic_295_in_PR.png "Prediction")
+
+
+下图参数：k = [9,5,5]
+
+![prd](./Results/srcnn_ep100lr0.01k955_weights/TEXTUREL/pic_295_in_PR.png "Prediction")
+
+下图参数：k = [11,7,7]
+
+![prd](./Results/srcnn_ep150lr0.01k11k7k7/TEXTUREL/pic_295_in_PR.png "Prediction")
+
+## 待办事项
+### @20181204
+- [x] infer操作不受控制
+    - @20181217，对于超分辨率学习，srcnn可以正常infer，但是对于有标定的连续性学习，无法infer，需要关注VSR.infer函数定义及其传入的参数
+        > 经过测试，主要由于infer函数传入的loader对象导致，对于QuickLoaderL，其中的_read_files及其他函数都有进行修改，包含了file_objects与infile_objects，而infer时只需要有file_objects就可以。
+        > **解决方案**：infer函数传入的loader对象不使用QuickLoaderL，而是使用QuickLoader。
+- [ ] 除SRCNN及VDSR外，其他模型数据准备存在问题，可能与upsample的现象有关
+    - @20181213，初步猜测受LayersHelper.upscale操作影响，Espcn、Carn等网络中都有调用
+        > 经初步测试Espcn网络，仅注释掉upscale语句，并不能解决问题

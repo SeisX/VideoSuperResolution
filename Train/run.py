@@ -11,8 +11,9 @@ import tensorflow as tf
 from functools import partial
 from pathlib import Path
 
+from VSR.DataLoader.VirtualFile import _ALLOWED_RAW_FORMAT
 from VSR.DataLoader.Dataset import load_datasets, Dataset
-from VSR.DataLoader.Loader import QuickLoader
+from VSR.DataLoader.Loader import QuickLoader, QuickLoaderL
 from VSR.Models import get_model, list_supported_models
 from VSR.Util.Config import Config
 from VSR.Framework.Callbacks import save_image, to_rgb, to_gray, lr_decay
@@ -47,7 +48,31 @@ tf.flags.DEFINE_multi_string('add_custom_callbacks', None, help="")
 tf.flags.DEFINE_bool('export', False, help="whether to export tf model")
 tf.flags.DEFINE_bool('freeze', False, help="whether to export freeze model, ignored if export is False")
 tf.flags.DEFINE_bool('v', False, help="show verbose")
+tf.flags.DEFINE_bool('labeled', False, help="labeled high-resolution image or not")
 
+''' For Segy Data Testing
+tf.flags.DEFINE_enum('model', 'srcnn', list_supported_models(), help="specify a model to use")
+tf.flags.DEFINE_enum('output_color', 'GRAY', ('RGB', 'L', 'GRAY', 'Y'), help="specify output color format")
+tf.flags.DEFINE_enum('mode', 'SEGY', _ALLOWED_RAW_FORMAT+['PIL-IMAGE1', 'SEGY', 'NUMPY'], help="specify data mode")
+tf.flags.DEFINE_integer('epochs', 50, lower_bound=1, help="training epochs")
+tf.flags.DEFINE_integer('steps_per_epoch', 200, lower_bound=1, help="specify steps in every epoch training")
+tf.flags.DEFINE_integer('threads', 1, lower_bound=1, help="number of threads to use while reading data")
+tf.flags.DEFINE_integer('output_index', -1, help="specify access index of output array")
+tf.flags.DEFINE_string('c', None, help="specify a configure file")
+tf.flags.DEFINE_string('p', None, help="specify a parameter file, otherwise will use the file in ./parameters")
+tf.flags.DEFINE_string('test', None, help="specify another dataset for testing")
+tf.flags.DEFINE_string('infer', None, help="specify a file, a path or a dataset for inferring")
+tf.flags.DEFINE_string('save_dir', '../Results', help="specify a folder to save checkpoint and output images")
+tf.flags.DEFINE_string('data_config', '../Data/datasets.yaml', help="path to data config file")
+tf.flags.DEFINE_string('dataset', 'segyseis0326', help="specify a dataset alias for training")
+tf.flags.DEFINE_string('memory_limit', None, help="limit the memory usage. i.e. '4GB', '1024MB'")
+tf.flags.DEFINE_string('comment', "segy_0326", help="append a postfix string to save dir")
+tf.flags.DEFINE_multi_string('add_custom_callbacks', None, help="")
+tf.flags.DEFINE_bool('export', False, help="whether to export tf model")
+tf.flags.DEFINE_bool('freeze', False, help="whether to export freeze model, ignored if export is False")
+tf.flags.DEFINE_bool('v', False, help="show verbose")
+tf.flags.DEFINE_bool('labeled', True, help="labeled high-resolution image or not")
+'''
 
 def check_args(opt):
     if opt.c:
@@ -80,6 +105,10 @@ def fetch_datasets(data_config_file, opt):
             infer_data = all_datasets[opt.infer.upper()]
     else:
         infer_data = test_data
+    if opt.mode:
+        dataset.mode = opt.mode
+        test_data.mode = opt.mode
+        infer_data.mode = opt.mode
     return dataset, test_data, infer_data
 
 
@@ -147,6 +176,8 @@ def main(*args):
 
     model_params = opt.get(opt.model)
     opt.update(model_params)
+    if opt.labeled:
+        opt.scale = 1
     model = get_model(opt.model)(**model_params)
     root = '{}/{}'.format(opt.save_dir, model.name)
     if opt.comment:
@@ -164,13 +195,17 @@ def main(*args):
     dump(opt)
     with trainer(model, root, verbosity) as t:
         # prepare loader
-        loader = partial(QuickLoader, n_threads=opt.threads)
+        if opt.labeled:
+            loader = partial(QuickLoaderL, n_threads=opt.threads)
+        else:
+            loader = partial(QuickLoader, n_threads=opt.threads)
         train_loader = loader(train_data, 'train', train_config,
                               augmentation=True)
         val_loader = loader(train_data, 'val', train_config, crop='center',
                             steps_per_epoch=1)
         test_loader = loader(test_data, 'test', test_config)
-        infer_loader = loader(infer_data, 'infer', infer_config)
+        # For infering, QuickLoaderL is not valid, instead it should be QuickLoader
+        infer_loader = partial(QuickLoader, n_threads=opt.threads)(infer_data, 'infer', infer_config)
         # fit
         t.fit([train_loader, val_loader], train_config)
         # validate
