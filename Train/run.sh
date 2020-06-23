@@ -41,7 +41,7 @@
 # @20190327 *PREDICTION* do prediction for new fracture dataset TH10Q3D
 # python run.py --model=srcnn --comment='ep100lr0.01k3' --labeled=True --infer=d:/Datasets/TH10Q3D/slice/
 # python run.py --model=srcnn --comment='ep100lr0.01k3' --labeled=True --infer=d:/Datasets/TH10Q3D/zoom/slice/
-python run.py --model=srcnn --comment='ep100lr0.01k3' --labeled=True --infer=d:/Datasets/TH10Q3D/zoom/slice/sim40_time_3624_zoom.png
+# python run.py --model=srcnn --comment='ep100lr0.01k3' --labeled=True --infer=d:/Datasets/TH10Q3D/zoom/slice/sim40_time_3624_zoom.png
 
 # @20181217 k=[9,5,3]
 # python run.py --model=srcnn --output_color=GRAY --dataset=texturel --infer=discont --comment=ep100lr0.01k953 --labeled=True --epochs=100
@@ -87,6 +87,10 @@ python run.py --model=srcnn --comment='ep100lr0.01k3' --labeled=True --infer=d:/
 # python run.py --model=srcnn --output_color=GRAY --comment='coh_k9_5_5' --labeled=True --infer=d:/Datasets/TH10Q3D/sect/
 # python run.py --model=srcnn --output_color=GRAY --comment='coh_k9_3_11' --labeled=True --infer=d:/Datasets/TH10Q3D/zoom/sect
 # python run.py --model=srcnn --output_color=GRAY --comment='coh_k9_5_5' --labeled=True --infer=d:/Datasets/TH10Q3D/zoom/sect
+# @20200623 *PREDICTION* do prediction for wudong project
+# python run.py --model=srcnn --output_color=GRAY --dataset=texturel --comment='ep100lr0.01k3' --labeled=True --infer=d:/Datasets/Wudong_QH
+# python run.py --model=srcnn --output_color=GRAY --dataset=texturel --comment='ep100lr0.01k953' --labeled=True --infer=d:/Datasets/Wudong_QH
+python run.py --model=srcnn --output_color=GRAY --dataset=texturel --comment='ep100lr0.01k935' --labeled=True --infer=d:/Datasets/Wudong_QH
 
 #--------------------------------
 ## ESPCN model
@@ -100,3 +104,6 @@ python run.py --model=srcnn --comment='ep100lr0.01k3' --labeled=True --infer=d:/
 
 # NOTE: The following command didn't work @20181213
 # python run.py --model=vdsr --dataset=texturel --test=None --infer=d:/Datasets/Discontinuity/ --comment=ep100lr0.01 --labeled=True
+
+# @20190327 *PREDICTION* do prediction for new fracture dataset TH10Q3D
+# python run.py --model=srcnn --mode=SEGY --dataset=SEGYSEIS0326 --comment='ep50lr0.01k955' --labeled=True 

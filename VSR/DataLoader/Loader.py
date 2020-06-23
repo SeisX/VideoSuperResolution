@@ -180,7 +180,7 @@ class BasicLoader:
             self.file_objects = [
                 RawFile(fp, dataset.mode, (dataset.width, dataset.height))
                 for fp in self.file_names]
-        elif dataset.mode.lower() == ' segy':
+        elif dataset.mode.lower() == 'segy':
             self.file_objects = [SegyFile(fp) for fp in self.file_names if '_ftr' in str(fp)]
         elif dataset.mode.lower() == 'numpy':
             """already loaded numpy array, in case anyone want to use 
@@ -531,6 +531,7 @@ class QuickLoaderL(BasicLoader):
                  **kwargs):
         self.shard = n_threads
         self.threads = []
+        self.mode = dataset.mode
         super(QuickLoaderL, self).__init__(dataset, method, config, augmentation,
                                           **kwargs)
 
@@ -593,13 +594,17 @@ class QuickLoaderL(BasicLoader):
         vf_lr.seek(index)
         vf_hr.seek(index)
 
-        frames_hr = [shrink_to_multiple_scale(img, self.scale)
-                     if self.modcrop else img for img in vf_hr.read_frame(depth)]
-        frames_lr = [shrink_to_multiple_scale(img, self.scale)
-                     if self.modcrop else img for img in vf_lr.read_frame(depth)]
-        
-        frames_hr = [img.convert(self.color_format) for img in frames_hr]
-        frames_lr = [img.convert(self.color_format) for img in frames_lr]
+        if self.mode.lower() == 'segy':
+            frames_hr = [img for img in vf_hr.read_frame(depth)]
+            frames_lr = [img for img in vf_lr.read_frame(depth)]
+        else:
+            frames_hr = [shrink_to_multiple_scale(img, self.scale)
+                        if self.modcrop else img for img in vf_hr.read_frame(depth)]
+            frames_lr = [shrink_to_multiple_scale(img, self.scale)
+                        if self.modcrop else img for img in vf_lr.read_frame(depth)]
+            
+            frames_hr = [img.convert(self.color_format) for img in frames_hr]
+            frames_lr = [img.convert(self.color_format) for img in frames_lr]
         return frames_hr, frames_lr, (vf_lr.name, index, vf_lr.frames)
 
     def _process_at_files(self, vf_lr, vf_hr, clips=1):
